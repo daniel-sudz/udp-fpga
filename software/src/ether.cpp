@@ -27,14 +27,11 @@ struct EtherPacket {
     // but their usage is rather rare and we can stick with fixed sized packets
     uint8_t buff[1500];
 
-    struct ether_header* ether_header_d = (ether_header*) buff;                       // start of packet has ether header start
-    struct iphdr* ip_header_d = (iphdr*) (ether_header_d + sizeof(ether_header));     // ip header is inside of ether header
+    struct ether_header* ether_header_d = (ether_header*) buff;                                   // start of packet has ether header start
+    struct iphdr* ip_header_d = (iphdr*) (((uint8_t*)ether_header_d) + sizeof(ether_header));     // ip header is inside of ether header
     
     // since ip header can be variable in size, its location is not actually known until ip header is parsed
     struct udphdr* udp_header_d = nullptr;
-
-    struct ifreq if_ip = {};
-    struct sockaddr_storage their_addr;
 };
 
 /* Contains some human-readable metadata alongside the raw ethernet frame*/
@@ -43,6 +40,10 @@ struct EtherPacketParsed {
 
     size_t udp_payload_size;
     uint8_t* udp_payload;
+
+    struct ifreq if_ip = {};
+    struct sockaddr_storage sender_addr;
+    char sender_addr_string[INET6_ADDRSTRLEN];
 };
 
 struct EtherPacketWatch {
@@ -105,13 +106,19 @@ struct EtherPacketWatch {
         parsed.packet_raw.udp_header_d = (udphdr*) ((uint8_t*)parsed.packet_raw.ip_header_d + header_size);
         parsed.udp_payload = ((uint8_t*) parsed.packet_raw.udp_header_d) + sizeof(udphdr);
         
-        // payload size is the size of the whole UDP packet minux the header size
+        std::cout<<"received packet with ip header size: "<<header_size<<std::endl;
+
+        // payload size is the size of the whole UDP packet minus the header size
         parsed.udp_payload_size = ntohs(parsed.packet_raw.udp_header_d->len) - sizeof(udphdr);
 
-        std::cout<<"udp payload size: "<<parsed.udp_payload_size<<std::endl;
+        std::cout<<"received packet with udp payload size: "<<parsed.udp_payload_size<<std::endl;
 
+        /// get source ip
+        ((sockaddr_in *)&parsed.sender_addr)->sin_addr.s_addr = parsed.packet_raw.ip_header_d->saddr;
+        inet_ntop(AF_INET, &((struct sockaddr_in*)&parsed.sender_addr)->sin_addr, parsed.sender_addr_string, sizeof(parsed.sender_addr_string));
 
-        std::cout<<"alive"<<std::endl;
+        std::cout<<"received packet with sender ip: "<<parsed.sender_addr_string<<std::endl;
+
 
         return parsed;
     }
@@ -130,6 +137,8 @@ int main() {
     }
     std::cout<<"[INFO]: packet watch binded successfully!"<<std::endl;
 
-
-    EtherPacketParsed packet = packet_watch.read_udp();
+    while(true) {
+         EtherPacketParsed packet = packet_watch.read_udp();
+    }
+   
 }
