@@ -2,5 +2,5 @@
   "editor.formatOnSave": false,
   "editor.formatOnPaste": false,
   "editor.formatOnType": false,
-  "cmake.configureOnOpen": true
+  "cmake.configureOnOpen": false,
 }

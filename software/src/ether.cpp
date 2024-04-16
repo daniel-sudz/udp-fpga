@@ -19,7 +19,7 @@
 
 
 struct EtherParams {
-    char DEFAULT_IF[IFNAMSIZ-1] = "eth0";
+    char DEFAULT_IF[IFNAMSIZ-1] = "enp0s31f6";
     uint16_t ETHER_TYPE_IPV4 = 0x0800;
 };
 
@@ -51,13 +51,13 @@ struct EtherPacketWatch {
 	struct sockaddr_storage their_addr;
 
     int sock_fd = -1;
-    int sock_opt = -1;
+    int sock_opt = 1;
 
     EtherPacketWatch(EtherParams _params = EtherParams()) {
         params = _params;
     }
     
-    /* Open the socket for ethernet */
+    // open the socket for ethernet
     int bind() {
         // bind the the system etehrnet socket
         if ((sock_fd = socket(PF_PACKET, SOCK_RAW, htons(params.ETHER_TYPE_IPV4))) == -1) {
