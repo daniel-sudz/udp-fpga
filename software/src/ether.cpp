@@ -97,14 +97,22 @@ struct EtherPacketWatch {
         EtherPacketParsed parsed;
         int bytes_recv = recvfrom(sock_fd, parsed.packet_raw.buff, sizeof(parsed.packet_raw.buff), 0, NULL, NULL);
 
-        // payload size is the size of the whole UDP packet minux the header size
-        parsed.udp_payload_size = ntohs(parsed.packet_raw.udp_header_d->len) - sizeof(udphdr);
+        std::cout<<"received packet of size: "<<bytes_recv<<std::endl;
+        std::cout<<"received packet of type: "<<ntohs(parsed.packet_raw.ether_header_d->ether_type)<<std::endl;
 
         // the IP header is variable in size and the ihl field carries the number of 32-bit words the header contains
         int header_size = (parsed.packet_raw.ip_header_d->ihl * 4);
         parsed.packet_raw.udp_header_d = (udphdr*) ((uint8_t*)parsed.packet_raw.ip_header_d + header_size);
         parsed.udp_payload = ((uint8_t*) parsed.packet_raw.udp_header_d) + sizeof(udphdr);
         
+        // payload size is the size of the whole UDP packet minux the header size
+        parsed.udp_payload_size = ntohs(parsed.packet_raw.udp_header_d->len) - sizeof(udphdr);
+
+        std::cout<<"udp payload size: "<<parsed.udp_payload_size<<std::endl;
+
+
+        std::cout<<"alive"<<std::endl;
+
         return parsed;
     }
 
@@ -121,4 +129,7 @@ int main() {
         exit(1);
     }
     std::cout<<"[INFO]: packet watch binded successfully!"<<std::endl;
+
+
+    EtherPacketParsed packet = packet_watch.read_udp();
 }
