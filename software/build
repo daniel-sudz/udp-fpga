@@ -8,4 +8,4 @@ cmake ..
 make
 cd ..
 
-out/src/ether
+sudo out/src/ether

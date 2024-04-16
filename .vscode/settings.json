@@ -3,4 +3,8 @@
   "editor.formatOnPaste": false,
   "editor.formatOnType": false,
   "cmake.configureOnOpen": false,
+  "files.associations": {
+    "*.v": "verilog",
+    "numbers": "cpp"
+  },
 }
