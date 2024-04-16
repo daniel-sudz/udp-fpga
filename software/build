@@ -6,3 +6,6 @@ mkdir out
 cd out
 cmake ..
 make
+cd ..
+
+out/src/ether
