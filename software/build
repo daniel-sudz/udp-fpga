@@ -1,0 +1,11 @@
+#!/bin/bash
+
+rm -rf out
+mkdir out
+
+cd out
+cmake ..
+make
+cd ..
+
+sudo out/src/ether
