@@ -170,9 +170,21 @@ public:
 private: 
 
 
+    /* 
+        Get ipv4 checksum without mutating header
+    */
+    uint16_t get_ipv4_checksum(iphdr* ip_header) {
+        iphdr no_checksum_field = *ip_header;
+        no_checksum_field.check = 0;
+        return ipv4_checksum_algo((uint16_t*)&no_checksum_field, no_checksum_field.ihl*4);
+    }
 
-    uint16_t ipv4_cheksum() {
-
+    /*
+        Writes checksum into ipv4 header
+    */
+    void add_ipv4_checksum(iphdr* ip_header) {
+        ip_header->check = 0;
+        ip_header->check = ipv4_checksum_algo((uint16_t*)&ip_header, ip_header->ihl*4);
     }
 
     /*
