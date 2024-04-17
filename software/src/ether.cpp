@@ -47,12 +47,17 @@ struct EtherPacketParsed {
 };
 
 struct EtherPacketWatch {
+
+private:
+
     EtherParams params;
 
     struct ifreq ifopts;	
 
     int sock_fd = -1;
     int sock_opt = 1;
+
+public:
 
     EtherPacketWatch(EtherParams _params = EtherParams()) {
         params = _params;
@@ -158,8 +163,52 @@ struct EtherPacketWatch {
 
         // package up send metadata for link-layer system call
         struct sockaddr_ll socket_address;
-        
 
+
+    }
+
+private: 
+
+
+
+    uint16_t ipv4_cheksum() {
+
+    }
+
+    /*
+        addr: start of ipv4 header
+        length: number of bytes to compute checksum of
+
+        definition (RFC791-5): 
+            "The checksum field is the 16 bit one's complement of the one's complement sum of all 16 bit words in the header. 
+            For purposes of computing the checksum, the value of the checksum field is zero."
+        
+        see reference: https://gist.github.com/david-hoze/0c7021434796997a4ca42d7731a7073a
+        see reference: https://www.packetmania.net/en/2021/12/26/IPv4-IPv6-checksum
+        see reference: https://www.youtube.com/watch?v=JqEvNxAJtDk
+    */
+    uint16_t ipv4_checksum_algo(uint16_t* check_addr, size_t check_length) {
+        uint32_t checksum = 0; 
+
+        // we are computing 16-bit checksum blocks to 2 bytes of the header are processed at a time
+        while(check_length > 1) {
+            checksum += *(check_addr++);
+            check_length -= 2;
+        }  
+
+        // if the header is odd byte length, align the last byte to a 16-bit block
+        if(check_length == 0) {
+            checksum += *(uint8_t*) check_addr;
+        }
+
+        // add the overflow bits to the checksum to preserve 16-bit ones compliment modular arithmetic
+        while(checksum>>16) {
+            checksum = (checksum & 0xffff) + (checksum >> 16);
+        }
+
+        // take one's compliment 
+        checksum = ~checksum; 
+        return (uint16_t) checksum;
     }
 };
 
