@@ -188,6 +188,47 @@ private:
     }
 
     /*
+        Writes udp ipv4 checksum into udp header
+    */
+    void add_udp_ipv4_checksum(iphdr* ip_header, udphdr* udp_header) {
+        udp_header->check = get_udp_ipv4_checksum(ip_header, udp_header);
+    }
+
+    /* 
+        Computes the (optional) UDP checksum field when UDP is used over IPV4.
+        
+        reference: https://en.wikipedia.org/wiki/User_Datagram_Protocol#IPv4_pseudo_header
+    */
+    uint16_t get_udp_ipv4_checksum(iphdr* ip_header, udphdr* udp_header) {
+        // checksum is computed with the checksum field zeroed out
+        udphdr no_checksum_udp_header = *udp_header;
+        no_checksum_udp_header.check = 0;
+
+        uint16_t buff[65536]; 
+
+        // assemble the pseudo ipv4 header
+        buff[0] = ((ip_header->saddr>>16)&0xFFFF);          // source IPv4 address
+        buff[1] = ((ip_header->saddr)&0xFFFF);              // source IPv4 address
+
+        buff[2] = ((ip_header->daddr>>16)&0xFFFF);          // destination IPv4 address
+        buff[3] = ((ip_header->daddr)&0xFFFF);              // destination IPv4 address
+        
+        buff[4] = htons(IPPROTO_UDP);                       // protocol = UDP, zeroes padding
+        buff[6] = udp_header->len;                          // udp header+payload length
+
+        // append the ip payload
+        uint8_t* end_pseudo_header = ((uint8_t*)buff + 6);
+        size_t udp_packet_length = htons(udp_header->len);
+        uint16_t* udp_payload_location = (uint16_t*)udp_header;
+
+        while(udp_packet_length > 1) {
+            *(end_pseudo_header+=2) = *(udp_payload_location++);
+        }
+
+        return ipv4_checksum_algo(buff, 6 + udp_packet_length*2);
+    }
+
+    /*
         addr: start of ipv4 header
         length: number of bytes to compute checksum of
 
@@ -211,7 +252,7 @@ private:
         // if the header is odd byte length, align the last byte to a 16-bit block
         if(check_length == 0) {
             checksum += *(uint8_t*) check_addr;
-        }
+        } 
 
         // add the overflow bits to the checksum to preserve 16-bit ones compliment modular arithmetic
         while(checksum>>16) {
@@ -222,6 +263,9 @@ private:
         checksum = ~checksum; 
         return (uint16_t) checksum;
     }
+
+
+
 };
 
 
