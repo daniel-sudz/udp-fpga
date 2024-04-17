@@ -128,14 +128,32 @@ public:
         return parsed;
     }
 
-    int send_udp(sockaddr dest_mac = {}) {
+    int send_udp(uint8_t* udp_payload, size_t udp_payload_size, uint32_t dest_ip = 0, sockaddr dest_mac = {}) {
+        // ethernet packet that is crafted
         EtherPacket packet; 
+
+        // mac address and index of interface being sent to
+        struct ifreq if_mac = {};
+        struct ifreq if_index = {};
+        struct sockaddr_ll send_socket_address_link_layer;
 
         // no ip options being used so ip header is a fixed size
         packet.udp_header_d  = (udphdr*) (((uint8_t*)packet.ip_header_d) + sizeof(iphdr));
+        packet.udp_header_d->len = sizeof(udphdr) + udp_payload_size;
+        packet.ip_header_d->tot_len = sizeof(iphdr);
+
+
+        // set some reasonable defaults in the ip header
+        packet.ip_header_d->version = htons(4);                                             // ipv4
+        packet.ip_header_d->ihl = htons(5);                                                 // no variable options, 20 byte header
+        packet.ip_header_d->ttl = 20;                                                       // hops
+        packet.ip_header_d->tot_len = sizeof(iphdr) + sizeof(udphdr) + udp_payload_size;    // ip header + ip payload
+        packet.ip_header_d->frag_off = 0;                                                   // no fragmented packets
+
+
+
 
         // get mac address of network interface 
-        struct ifreq if_mac = {};
         strncpy(if_mac.ifr_name, params.DEFAULT_IF, sizeof(params.DEFAULT_IF));
         if (ioctl(sock_fd, SIOCGIFHWADDR, &if_mac) < 0) {
             perror("[ERROR]: SIOCGIFHWADDR failed to read hardware address");
@@ -144,14 +162,12 @@ public:
         }
 
         // get index of network interface 
-        struct ifreq if_index = {};
         strncpy(if_index.ifr_name, params.DEFAULT_IF, sizeof(params.DEFAULT_IF));
         if (ioctl(sock_fd, SIOCGIFINDEX, &if_index) < 0) {
             perror("[ERROR]: SIOCGIFINDEX failed to find index of network device");
             close(sock_fd);
             return -1;
         }
-
 
         // set sender/reciever mac address 
         memcpy((char*)packet.ether_header_d->ether_shost, (char*)if_mac.ifr_hwaddr.sa_data, 6);
@@ -160,11 +176,27 @@ public:
         // set protocol to ipv4
         packet.ether_header_d->ether_type = htons(params.ETHER_TYPE_IPV4);
 
+        // set the ethernet packet payload
+        uint8_t* payload_address = ((uint8_t*)packet.buff) + sizeof(ether_header);
+        memcpy(payload_address, udp_payload, udp_payload_size - sizeof(udphdr));
+
+        // set checksums 
+        add_ipv4_checksum(packet.ip_header_d);
+        add_udp_ipv4_checksum(packet.ip_header_d, packet.udp_header_d);
 
         // package up send metadata for link-layer system call
-        struct sockaddr_ll socket_address;
+        send_socket_address_link_layer.sll_ifindex = if_index.ifr_ifindex;
+        send_socket_address_link_layer.sll_halen = ETH_ALEN;
+        memcpy((char*)send_socket_address_link_layer.sll_addr, (char*)dest_mac.sa_data, 6);
 
+        // send the ethernet packet
+	    if (sendto(sock_fd, packet.buff, udp_payload_size + sizeof(ether_header), 0, (struct sockaddr*)&send_socket_address_link_layer, sizeof(struct sockaddr_ll)) < 0) {
+            perror("[ERROR]: failed to send ethernet packet");
+            close(sock_fd);
+            return -1;
+        }
 
+        return 0;
     }
 
 private: 
@@ -196,7 +228,7 @@ private:
 
     /* 
         Computes the (optional) UDP checksum field when UDP is used over IPV4.
-        
+
         reference: https://en.wikipedia.org/wiki/User_Datagram_Protocol#IPv4_pseudo_header
     */
     uint16_t get_udp_ipv4_checksum(iphdr* ip_header, udphdr* udp_header) {
@@ -282,6 +314,11 @@ int main() {
 
     while(true) {
          EtherPacketParsed packet = packet_watch.read_udp();
+
+
+         // test sending packet
+        uint8_t data[4] = {1, 2, 3, 4};
+        packet_watch.send_udp(data, sizeof(data), 0, {});
     }
    
 }
