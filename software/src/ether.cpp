@@ -17,15 +17,15 @@
 
 
 struct EtherParams {
-    char DEFAULT_IF[IFNAMSIZ-1] = "enp0s31f6";
-    uint16_t ETHER_TYPE_IPV4 = 0x0800;
+    char DEFAULT_IF[IFNAMSIZ-1] = "lo";
+    uint16_t ETHER_TYPE_IPV4 = ETH_P_IP;
 };
 
 /* Ethernet frames are read directly into the buffer field of this struct */ 
 struct EtherPacket {
     // ethernet technically supports variable sized frames (jumbo)
     // but their usage is rather rare and we can stick with fixed sized packets
-    uint8_t buff[1500];
+    uint8_t buff[65536];
 
     struct ether_header* ether_header_d = (ether_header*) buff;                                   // start of packet has ether header start
     struct iphdr* ip_header_d = (iphdr*) (((uint8_t*)ether_header_d) + sizeof(ether_header));     // ip header is inside of ether header
@@ -123,6 +123,44 @@ struct EtherPacketWatch {
         return parsed;
     }
 
+    int send_udp(sockaddr dest_mac = {}) {
+        EtherPacket packet; 
+
+        // no ip options being used so ip header is a fixed size
+        packet.udp_header_d  = (udphdr*) (((uint8_t*)packet.ip_header_d) + sizeof(iphdr));
+
+        // get mac address of network interface 
+        struct ifreq if_mac = {};
+        strncpy(if_mac.ifr_name, params.DEFAULT_IF, sizeof(params.DEFAULT_IF));
+        if (ioctl(sock_fd, SIOCGIFHWADDR, &if_mac) < 0) {
+            perror("[ERROR]: SIOCGIFHWADDR failed to read hardware address");
+            close(sock_fd);
+            return -1;
+        }
+
+        // get index of network interface 
+        struct ifreq if_index = {};
+        strncpy(if_index.ifr_name, params.DEFAULT_IF, sizeof(params.DEFAULT_IF));
+        if (ioctl(sock_fd, SIOCGIFINDEX, &if_index) < 0) {
+            perror("[ERROR]: SIOCGIFINDEX failed to find index of network device");
+            close(sock_fd);
+            return -1;
+        }
+
+
+        // set sender/reciever mac address 
+        memcpy((char*)packet.ether_header_d->ether_shost, (char*)if_mac.ifr_hwaddr.sa_data, 6);
+        memcpy((char*)packet.ether_header_d->ether_dhost, (char*)dest_mac.sa_data, 6);
+
+        // set protocol to ipv4
+        packet.ether_header_d->ether_type = htons(params.ETHER_TYPE_IPV4);
+
+
+        // package up send metadata for link-layer system call
+        struct sockaddr_ll socket_address;
+        
+
+    }
 };
 
 
