@@ -1,3 +1,5 @@
+// Test module for Arty cycles the LEDs
+
 module leds(mainclk,
 led0_b,led0_g,led0_r,
 led1_b,led1_g,led1_r,
