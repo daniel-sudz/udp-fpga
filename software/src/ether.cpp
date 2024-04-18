@@ -49,7 +49,6 @@ struct EtherPacketParsed {
 struct EtherPacketWatch {
 
 private:
-
     EtherParams params;
 
     struct ifreq ifopts;	
@@ -306,8 +305,6 @@ private:
         return (uint16_t) checksum;
     }
 
-
-
 };
 
 
@@ -324,7 +321,6 @@ int main() {
 
     while(true) {
          EtherPacketParsed packet = packet_watch.read_udp();
-
 
          // test sending packet
         uint8_t data[4] = {1, 2, 3, 4};
