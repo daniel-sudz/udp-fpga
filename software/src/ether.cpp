@@ -139,17 +139,16 @@ public:
 
         // no ip options being used so ip header is a fixed size
         packet.udp_header_d  = (udphdr*) (((uint8_t*)packet.ip_header_d) + sizeof(iphdr));
-        packet.udp_header_d->len = sizeof(udphdr) + udp_payload_size;
-        packet.ip_header_d->tot_len = sizeof(iphdr);
+        packet.udp_header_d->len = htons(sizeof(udphdr) + udp_payload_size);
+        packet.ip_header_d->tot_len = htons(sizeof(iphdr));
 
 
         // set some reasonable defaults in the ip header
-        packet.ip_header_d->version = htons(4);                                             // ipv4
-        packet.ip_header_d->ihl = htons(5);                                                 // no variable options, 20 byte header
+        packet.ip_header_d->version = 4;                                                    // ipv4
+        packet.ip_header_d->ihl = 5;                                                        // no variable options, 20 byte header
         packet.ip_header_d->ttl = 20;                                                       // hops
         packet.ip_header_d->tot_len = sizeof(iphdr) + sizeof(udphdr) + udp_payload_size;    // ip header + ip payload
-        packet.ip_header_d->frag_off = 0;                                                   // no fragmented packets
-
+        packet.ip_header_d->frag_off = htons(0);                                            // no fragmented packets
 
 
 
@@ -177,8 +176,8 @@ public:
         packet.ether_header_d->ether_type = htons(params.ETHER_TYPE_IPV4);
 
         // set the ethernet packet payload
-        uint8_t* payload_address = ((uint8_t*)packet.buff) + sizeof(ether_header);
-        memcpy(payload_address, udp_payload, udp_payload_size - sizeof(udphdr));
+        uint8_t* udp_payload_address = ((uint8_t*)packet.udp_header_d) + sizeof(udphdr);
+        memcpy(udp_payload_address, udp_payload, udp_payload_size);
 
         // set checksums 
         add_ipv4_checksum(packet.ip_header_d);
@@ -230,34 +229,44 @@ private:
         Computes the (optional) UDP checksum field when UDP is used over IPV4.
 
         reference: https://en.wikipedia.org/wiki/User_Datagram_Protocol#IPv4_pseudo_header
+        reference: https://gist.github.com/david-hoze/0c7021434796997a4ca42d7731a7073a
     */
     uint16_t get_udp_ipv4_checksum(iphdr* ip_header, udphdr* udp_header) {
         // checksum is computed with the checksum field zeroed out
         udphdr no_checksum_udp_header = *udp_header;
         no_checksum_udp_header.check = 0;
 
-        uint16_t buff[65536]; 
-
-        // assemble the pseudo ipv4 header
-        buff[0] = ((ip_header->saddr>>16)&0xFFFF);          // source IPv4 address
-        buff[1] = ((ip_header->saddr)&0xFFFF);              // source IPv4 address
-
-        buff[2] = ((ip_header->daddr>>16)&0xFFFF);          // destination IPv4 address
-        buff[3] = ((ip_header->daddr)&0xFFFF);              // destination IPv4 address
+        uint32_t checksum = 0; 
         
-        buff[4] = htons(IPPROTO_UDP);                       // protocol = UDP, zeroes padding
-        buff[6] = udp_header->len;                          // udp header+payload length
+        // assemble the pseudo ipv4 header
+        checksum += ((ip_header->saddr>>16)&0xFFFF);        // source IPv4 address
+        checksum += ((ip_header->saddr)&0xFFFF);            // source IPv4 address
+
+        checksum += ((ip_header->daddr>>16)&0xFFFF);         // destination IPv4 address
+        checksum += ((ip_header->daddr)&0xFFFF);             // destination IPv4 address
+
+        checksum += htons(IPPROTO_UDP);                      // protocol = UDP, zeroes padding                  
+        checksum += udp_header->len;                         // length of udp packet
 
         // append the ip payload
-        uint8_t* end_pseudo_header = ((uint8_t*)buff + 6);
-        size_t udp_packet_length = htons(udp_header->len);
-        uint16_t* udp_payload_location = (uint16_t*)udp_header;
+        size_t ip_payload_length = ntohs(udp_header->len);
+        uint16_t* ip_payload_location = (uint16_t*)(((uint8_t*)ip_header) + sizeof(iphdr));
 
-        while(udp_packet_length > 1) {
-            *(end_pseudo_header+=2) = *(udp_payload_location++);
+        while(ip_payload_length > 1) {
+            checksum += *(ip_payload_location++);
+            ip_payload_length -= 2;
+        }
+        // add the last byte if needed
+        if(ip_payload_length == 1) {
+            checksum += ((uint16_t)(*((uint8_t*)ip_payload_location))) << 16;
         }
 
-        return ipv4_checksum_algo(buff, 6 + udp_packet_length*2);
+        // add the overflow bits to the checksum to preserve 16-bit ones compliment modular arithmetic
+        while(checksum>>16) {
+            checksum = (checksum & 0xffff) + (checksum >> 16);
+        }
+
+        return checksum;
     }
 
     /*
