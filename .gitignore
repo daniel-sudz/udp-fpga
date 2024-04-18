@@ -1,5 +1,7 @@
 #----- our project
 out
+*.bit
+*.checkpoint
 
 #----- macos 
 
