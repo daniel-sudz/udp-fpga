@@ -18,7 +18,6 @@
 
 struct EtherParams {
     char DEFAULT_IF[IFNAMSIZ-1] = "lo";
-    uint16_t ETHER_TYPE_IPV4 = ETH_P_IP;
 };
 
 /* Ethernet frames are read directly into the buffer field of this struct */ 
@@ -46,7 +45,7 @@ struct EtherPacketParsed {
     char sender_addr_string[INET6_ADDRSTRLEN];
 };
 
-struct EtherPacketWatch {
+struct EtherPacketWatchIPV4UDP {
 
 private:
     EtherParams params;
@@ -58,14 +57,14 @@ private:
 
 public:
 
-    EtherPacketWatch(EtherParams _params = EtherParams()) {
+    EtherPacketWatchIPV4UDP(EtherParams _params = EtherParams()) {
         params = _params;
     }
     
     // open the socket for ethernet
     int bind() {
         // bind the the system etehrnet socket
-        if ((sock_fd = socket(PF_PACKET, SOCK_RAW, htons(params.ETHER_TYPE_IPV4))) == -1) {
+        if ((sock_fd = socket(PF_PACKET, SOCK_RAW, htons(ETH_P_IP))) == -1) {
             perror("[ERROR] ethernet listener socket");	
             return -1;
         }
@@ -139,16 +138,15 @@ public:
         // no ip options being used so ip header is a fixed size
         packet.udp_header_d  = (udphdr*) (((uint8_t*)packet.ip_header_d) + sizeof(iphdr));
         packet.udp_header_d->len = htons(sizeof(udphdr) + udp_payload_size);
-        packet.ip_header_d->tot_len = htons(sizeof(iphdr));
 
 
         // set some reasonable defaults in the ip header
-        packet.ip_header_d->version = 4;                                                    // ipv4
-        packet.ip_header_d->ihl = 5;                                                        // no variable options, 20 byte header
-        packet.ip_header_d->ttl = 20;                                                       // hops
-        packet.ip_header_d->tot_len = sizeof(iphdr) + sizeof(udphdr) + udp_payload_size;    // ip header + ip payload
-        packet.ip_header_d->frag_off = htons(0);                                            // no fragmented packets
-
+        packet.ip_header_d->version = 4;                                                            // ipv4
+        packet.ip_header_d->ihl = 5;                                                                // no variable options, 20 byte header
+        packet.ip_header_d->ttl = 20;                                                               // hops
+        packet.ip_header_d->tot_len = htons(sizeof(iphdr) + sizeof(udphdr) + udp_payload_size);     // ip header + ip payload
+        packet.ip_header_d->frag_off = htons(0);                                                    // no fragmented packets
+        packet.ip_header_d->protocol = IPPROTO_UDP;
 
 
         // get mac address of network interface 
@@ -171,8 +169,8 @@ public:
         memcpy((char*)packet.ether_header_d->ether_shost, (char*)if_mac.ifr_hwaddr.sa_data, 6);
         memcpy((char*)packet.ether_header_d->ether_dhost, (char*)dest_mac.sa_data, 6);
 
-        // set protocol to ipv4
-        packet.ether_header_d->ether_type = htons(params.ETHER_TYPE_IPV4);
+        // set protocol to ipv4 UDP
+        packet.ether_header_d->ether_type = htons(ETH_P_IP);
 
         // set the ethernet packet payload
         uint8_t* udp_payload_address = ((uint8_t*)packet.udp_header_d) + sizeof(udphdr);
@@ -312,7 +310,7 @@ int main() {
     std::cout<<"[INFO]: running UDP watch"<<std::endl;
 
 
-    EtherPacketWatch packet_watch;
+    EtherPacketWatchIPV4UDP packet_watch;
     if(packet_watch.bind() == -1) {
         perror("[ERROR]: packet watch failed to bind");
         exit(1);
