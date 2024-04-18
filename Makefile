@@ -13,7 +13,7 @@ WAVES=gtkwave --rcvar 'fontname_signals Monospace 10' --rcvar 'fontname_waves Mo
 MAIN_SRCS= hdl/*.sv hdl/main.sv
 
 # .PHONY dereferences possible files named "clean" and instead runs it as cmd
-.PHONY: clean
+.PHONY: clean usb
 
 # test_main: hdl/tests/test_main.sv hdl/main.sv ${MAIN_SRCS}
 # 	@echo "This might take a while, we're testing a lot of clock cycles!"
@@ -47,4 +47,6 @@ program_fpga_digilent: main.bit
 clean:
 	rm -f *.bin *.vcd *.fst vivado*.log *.jou vivado*.str *.log *.checkpoint *.bit *.html *.xml
 	rm -rf .Xil
+usb:
+	picocom -b 115200 --omap crcrlf /dev/ttyUSB1
 
