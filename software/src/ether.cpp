@@ -25,7 +25,7 @@ struct EtherParams {
 struct EtherPacket {
     // ethernet technically supports variable sized frames (jumbo)
     // but their usage is rather rare and we can stick with fixed sized packets
-    uint8_t buff[65536];
+    uint8_t buff[65536] = {};
 
     struct ether_header* ether_header_d = (ether_header*) buff;                                   // start of packet has ether header start
     struct iphdr* ip_header_d = (iphdr*) (((uint8_t*)ether_header_d) + sizeof(ether_header));     // ip header is inside of ether header
@@ -189,7 +189,8 @@ public:
         memcpy((char*)send_socket_address_link_layer.sll_addr, (char*)dest_mac.sa_data, 6);
 
         // send the ethernet packet
-	    if (sendto(sock_fd, packet.buff, udp_payload_size + sizeof(ether_header), 0, (struct sockaddr*)&send_socket_address_link_layer, sizeof(struct sockaddr_ll)) < 0) {
+        uint32_t ethernet_frame_size = std::max((long long)(udp_payload_size+sizeof(ether_header)+sizeof(iphdr)+sizeof(udphdr)), 64ll);
+	    if (sendto(sock_fd, packet.buff, ethernet_frame_size, 0, (struct sockaddr*)&send_socket_address_link_layer, sizeof(struct sockaddr_ll)) < 0) {
             perror("[ERROR]: failed to send ethernet packet");
             close(sock_fd);
             return -1;
