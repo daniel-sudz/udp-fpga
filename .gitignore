@@ -3,6 +3,9 @@ out
 *.bit
 *.checkpoint
 
+*.bin
+*.fst
+
 #----- macos 
 
 # General
