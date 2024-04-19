@@ -2,70 +2,55 @@
 
 module tb_udp_main;
 
-    parameter FRAME_WIDTH = 12000; // assuming 1500 byte eth frame width
-    reg clk;
-    reg rst;
+    parameter FRAME_WIDTH = 12000; // standard frame width
+    reg main_clk;
+    reg main_rst;
     reg [FRAME_WIDTH-1:0] eth_frame;
-    reg frame_valid;
-    wire frame_ready;
-    wire valid_ipv4;
+    reg frame_start;
+    wire valid_ip;
 
-    // Instantiate the Device Under Test (DUT)
-    udp_main dut(
-        .main_clk(clk),
-        .main_rst(rst),
+    udp_main #(.FRAME_WIDTH(FRAME_WIDTH)) uut (
+        .main_clk(main_clk),
+        .main_rst(main_rst),
         .eth_frame(eth_frame),
-        .frame_valid(frame_valid),
-        .frame_ready(frame_ready),
-        .valid_ipv4(valid_ipv4)
+        .frame_start(frame_start),
+        .valid_ip(valid_ip)
     );
 
-    // Clock generation
-    always #5 clk = ~clk;
-
-    // Monitor changes on valid_ipv4 and print messages
-    always @(posedge clk) begin
-        if (valid_ipv4) begin
-            $display("%t: IPv4 packet detected.", $time);
-        end else if (frame_valid && !valid_ipv4) begin
-            $display("%t: Non-IPv4 packet detected.", $time);
-        end
+    // 25mhz clock because idk
+    initial begin
+        main_clk = 0;
+        forever #20 main_clk = ~main_clk; // manual assertions for clock
     end
 
-    // Use test vectors
     initial begin
-        clk = 0;
-        rst = 1;
+        main_rst = 1;
         eth_frame = 0;
-        frame_valid = 0;
+        frame_start = 0;
 
-        // Reset the system
-        #20 rst = 0;
-        #20 rst = 1;
-        #20 rst = 0;
+        #40;
+        main_rst = 0;
+        
+        // valid packet
+        eth_frame[111:96] = 16'h0800; // 0x0800 is ipv4 ethtype
+        frame_start = 1'b1;
+        #40 frame_start = 1'b0;
 
-        // Test 1: Valid IPv4 packet
-        eth_frame = {48'hAA_BB_CC_DD_EE_FF, // Destination MAC
-                     48'h11_22_33_44_55_66, // Source MAC
-                     16'h0800,              // IPv4 Ethertype
-                     {FRAME_WIDTH-112{1'b0}}}; // Remaining frame bits
-        frame_valid = 1'b1;
+        #100;
 
-        #10 frame_valid = 1'b0; // End of frame
-        #20;
+        // arp packet (bad)
+        eth_frame[111:96] = 16'h0806; // arp is 0x0806
+        frame_start = 1'b1;
+        #40 frame_start = 1'b0;
 
-        // Test 2: Non-IPv4 packet (ARP for example)
-        eth_frame = {48'hAA_BB_CC_DD_EE_FF, // Destination MAC
-                     48'h11_22_33_44_55_66, // Source MAC
-                     16'h0806,              // ARP Ethertype
-                     {FRAME_WIDTH-112{1'b0}}}; // Remaining frame bits
-        frame_valid = 1'b1;
+        #100;
 
-        #10 frame_valid = 1'b0; // End of frame
-        #20;
-
-        // End simulation
         $finish;
+    end
+
+    initial begin
+        $dumpfile("test_udp_main.fst");
+        $dumpvars;
     end
 
 endmodule
