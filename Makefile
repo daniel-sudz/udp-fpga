@@ -9,7 +9,7 @@ VIVADO=vivado -mode batch -source
 WAVES=gtkwave --rcvar 'fontname_signals Monospace 10' --rcvar 'fontname_waves Monospace 10'
 
 
-MAIN_DEPS= zeros.memh
+MAIN_DEPS= *.memh
 MAIN_SRCS= hdl/*.sv hdl/main.sv
 
 # .PHONY dereferences possible files named "clean" and instead runs it as cmd
