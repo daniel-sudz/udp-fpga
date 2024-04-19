@@ -1,8 +1,12 @@
 `timescale 1ns/1ps
 
+`timescale 1ns/1ps
+
 module main(mainclk,
 btn,
 sw,
+uart_rxd_out,
+uart_txd_in,
 uart_rxd_out,
 uart_txd_in,
 led0_b, led0_g, led0_r,
@@ -28,6 +32,7 @@ eth_txd //4-bit
 input wire mainclk;     // 100 MHz
 logic [16:0] clk_divider;
 logic dataclk;           // 25 MHz
+logic uartclk;           // 12.5 MHz
 logic uartclk;           // 12.5 MHz
 input wire [3:0] btn;   // Buttons
 input wire [3:0] sw;    // Switches
