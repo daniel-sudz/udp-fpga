@@ -7,8 +7,6 @@ btn,
 sw,
 uart_rxd_out,
 uart_txd_in,
-uart_rxd_out,
-uart_txd_in,
 led0_b, led0_g, led0_r,
 led1_b, led1_g, led1_r,
 led2_b, led2_g, led2_r,
@@ -32,7 +30,6 @@ eth_txd //4-bit
 input wire mainclk;     // 100 MHz
 logic [16:0] clk_divider;
 logic dataclk;           // 25 MHz
-logic uartclk;           // 12.5 MHz
 logic uartclk;           // 12.5 MHz
 input wire [3:0] btn;   // Buttons
 input wire [3:0] sw;    // Switches
@@ -163,7 +160,9 @@ always_ff @(posedge eth_rx_clk) begin : Ethernet_Receive
             ethbitcounter<=ethbitcounter+1;
             if(&ethbitcounter) begin
                 eth_addr<=eth_addr+1; // This is one addr desynced
-                wr_ena<=1;
+                if(sw[1]) begin
+                    wr_ena<=1;
+                end
             end else begin
                 wr_ena<=0; 
             end
@@ -192,7 +191,7 @@ always_comb begin
     end
 end
 
-block_ram RAM(
+block_ram #(.INIT("custom.memh")) RAM(
   .clk(mainclk), .rd_addr(addr), .rd_data(rd_data),
   .wr_addr(addr), .wr_ena(wr_ena), .wr_data(wr_data)
 );
@@ -216,17 +215,44 @@ always_ff @(posedge uartclk) begin : UART_Transmit // run "make usb"
         if(eth_state==U_TX & tx_ready & ~tx_valid) begin // TODO: add some sort of error detection for write/read
             tx_valid<=1;
             // if(circle_buffer[read_pointer]) begin
-            if(read_buffer[0]) begin
-                tx_data<=8'd49; // 1
-            end else begin
-                tx_data<=8'd48; // 0
-            end
-            uartbitcounter<=uartbitcounter+1; //this is also one addr desynced
-            if(&uartbitcounter) begin
+            // BINARY
+            // if(read_buffer[0]) begin
+            //     tx_data<=8'd49; // 1
+            // end else begin
+            //     tx_data<=8'd48; // 0
+            // end
+            // uartbitcounter<=uartbitcounter+1; //this is also one addr desynced
+            // if(&uartbitcounter) begin
+            //     uart_addr<=uart_addr+1;
+            //     read_buffer<=rd_data;
+            // end else begin
+            //     read_buffer[30:0]<=read_buffer[31:1];
+            // end
+            // HEX
+            case(read_buffer[3:0])
+                4'd0: tx_data<=8'h30;
+                4'd1: tx_data<=8'h31;
+                4'd2: tx_data<=8'h32;
+                4'd3: tx_data<=8'h33;
+                4'd4: tx_data<=8'h34;
+                4'd5: tx_data<=8'h35;
+                4'd6: tx_data<=8'h36;
+                4'd7: tx_data<=8'h37;
+                4'd8: tx_data<=8'h38;
+                4'd9: tx_data<=8'h39;
+                4'd10: tx_data<=8'h61;
+                4'd11: tx_data<=8'h62;
+                4'd12: tx_data<=8'h63;
+                4'd13: tx_data<=8'h64;
+                4'd14: tx_data<=8'h65;
+                4'd15: tx_data<=8'h66;
+            endcase
+            uartbitcounter<=uartbitcounter+4;
+            if(&(~uartbitcounter)) begin
                 uart_addr<=uart_addr+1;
                 read_buffer<=rd_data;
             end else begin
-                read_buffer[30:0]<=read_buffer[31:1];
+                read_buffer[27:0]<=read_buffer[31:4];
             end
         end else begin
             tx_valid<=0;
@@ -335,3 +361,21 @@ always_ff @(posedge mainclk ) begin : LED_counters
 end
 
 endmodule
+
+// print("\n".join(["%02x"%ord("%01x"%i) for i in range(16)]))
+// 30
+// 31
+// 32
+// 33
+// 34
+// 35
+// 36
+// 37
+// 38
+// 39
+// 61
+// 62
+// 63
+// 64
+// 65
+// 66
