@@ -50,3 +50,8 @@ clean:
 usb:
 	picocom -b 115200 --omap crcrlf /dev/ttyUSB1
 
+#main test
+test_udp_main: hdl/tests/test_udp_main.sv hdl/udp_main.sv
+	${IVERILOG} -o $@.bin $^ && ${VVP} $@.bin ${VVP_POST}
+waves_test_udp_main : test_udp_main
+	${WAVES} test_udp_main.fst
