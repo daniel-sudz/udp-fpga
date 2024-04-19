@@ -96,12 +96,12 @@ end
 always_comb begin : State_Change
     if(eth_state==E_IDLE & one_shot) begin
         change_state=eth_rx_dv;
-    end
-    if(eth_state==E_REC) begin
+    end else if(eth_state==E_REC) begin
         change_state=~eth_rx_dv & tx_ready;
-    end
-    if(eth_state==U_TX) begin
-        change_state=(uart_addr==9'd374); // TODO: add correct bound
+    end else if(eth_state==U_TX) begin
+        change_state=(uart_addr>=9'd2); // TODO: add correct bound (374?)
+    end else begin
+        change_state=0;
     end
 end
 
@@ -191,7 +191,7 @@ uart_driver UART(.clk(uartclk), .rst(rst), // reset with rest of system
                 .uart_tx(uart_rxd_out), .uart_rx(uart_txd_in)
 );
 
-always_ff @(posedge eth_rx_clk) begin : UART_Transmit // run "make usb"
+always_ff @(posedge uartclk) begin : UART_Transmit // run "make usb"
     if(rst|uart_start) begin
         uart_addr<=0;
         uartbitcounter<=0;
@@ -264,7 +264,7 @@ always_comb begin : LED_drivers
             // 1 - Yellow for E_REC
             led1_b = 0;
             led1_g = eth_state==E_REC;
-            led1_r = 0;
+            led1_r = eth_state==E_REC;
 
             // 2 - Red for U_TX
             led2_b = 0;
