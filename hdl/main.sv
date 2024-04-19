@@ -41,7 +41,7 @@ logic tx_valid;
 logic [7:0] tx_data;
 logic [31:0] read_buffer;
 
-always_comb rst = |btn;
+always_comb rst = |btn[3:1];
 
 always_comb dataclk = clk_divider[1]; // 4x division
 always_comb uartclk = clk_divider[2]; // 8x division
@@ -85,12 +85,13 @@ always_ff @(posedge mainclk) begin : Finite_State_Machine
     end else if(eth_state==E_REC & change_state) begin
         eth_state<=U_TX;
         eth_start<=1;
-        uart_start<=0;
+        uart_start<=0; 
     end else if(eth_state==U_TX & change_state) begin
         eth_state<=E_IDLE;
         eth_start<=1;
         uart_start<=1;
     end
+    one_shot<=btn[0];
 end
 
 always_comb begin : State_Change
@@ -99,7 +100,7 @@ always_comb begin : State_Change
     end else if(eth_state==E_REC) begin
         change_state=~eth_rx_dv & tx_ready;
     end else if(eth_state==U_TX) begin
-        change_state=(uart_addr>=9'd2); // TODO: add correct bound (374?)
+        change_state=(uart_addr>=9'd375); // TODO: add correct bound (375?)
     end else begin
         change_state=0;
     end
@@ -159,7 +160,7 @@ always_ff @(posedge eth_rx_clk) begin : Ethernet_Receive
                 eth_addr<=eth_addr+1; // This is one addr desynced
                 wr_ena<=1;
             end else begin
-                wr_ena<=0;
+                wr_ena<=0; 
             end
         end
     end
@@ -176,11 +177,19 @@ wire [31:0] rd_data;
 logic [2:0] ethbitcounter;
 logic [4:0] uartbitcounter;
 
-always_comb addr = (eth_state==E_REC) ? eth_addr : uart_addr;
+always_comb begin
+    if(eth_state==E_REC) begin
+        addr = eth_addr;
+    end else if(eth_state==U_TX) begin
+        addr = uart_addr;
+    end else begin
+        addr = 0;
+    end
+end
 
-bytewise_block_ram RAM(
-  .clk(mainclk), .addr(addr), .rd_data(rd_data),
-  .wr_ena(wr_ena), .col_ena('1), .wr_data(wr_data)
+block_ram RAM(
+  .clk(mainclk), .rd_addr(addr), .rd_data(rd_data),
+  .wr_addr(addr), .wr_ena(wr_ena), .wr_data(wr_data)
 );
 
 //#########################        OUTPUT        ###############################
@@ -199,7 +208,7 @@ always_ff @(posedge uartclk) begin : UART_Transmit // run "make usb"
         tx_data<=0;
         tx_valid<=0;
     end else begin
-        if(eth_state==U_TX & tx_ready) begin // TODO: add some sort of error detection for write/read
+        if(eth_state==U_TX & tx_ready & ~tx_valid) begin // TODO: add some sort of error detection for write/read
             tx_valid<=1;
             // if(circle_buffer[read_pointer]) begin
             if(read_buffer[0]) begin

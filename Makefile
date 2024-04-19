@@ -9,7 +9,7 @@ VIVADO=vivado -mode batch -source
 WAVES=gtkwave --rcvar 'fontname_signals Monospace 10' --rcvar 'fontname_waves Monospace 10'
 
 
-
+MAIN_DEPS= zeros.memh
 MAIN_SRCS= hdl/*.sv hdl/main.sv
 
 # .PHONY dereferences possible files named "clean" and instead runs it as cmd
@@ -22,12 +22,22 @@ MAIN_SRCS= hdl/*.sv hdl/main.sv
 # 	${WAVES} -a hdl/tests/main.gtkw main.fst
 
 
+# main.bit: ${MAIN_SRC} ${MAIN_DEPS}
+# 	@echo "################################################"
+# 	@echo "## building Main with..."
+# 	@echo "## 	SRC=$(MAIN_SRC)"
+# 	@echo "## 	DEPS=$(MAIN_DEPS)"
+# 	@echo "################################################"
+# 	SYNTH_HDL_SOURCES="main.sv $(MAIN_SRC)" SYNTH_XDC_FILE="main.xdc" SYNTH_TOP_MODULE="main" ${VIVADO} build.tcl
 
-main.bit: $(MAIN_SRCS)
+# main.program: main.bit 
+# 	${VIVADO} program.tcl
+
+main.bit: $(MAIN_SRCS) $(MAIN_DEPS)
 	@echo "########################################"
 	@echo "#### Building FPGA bitstream        ####"
 	@echo "########################################"
-	${VIVADO} build.tcl
+	SYNTH_HDL_SOURCES="main.sv $(MAIN_SRC)" SYNTH_XDC_FILE="main.xdc" SYNTH_TOP_MODULE="main" ${VIVADO} build.tcl
 
 program_fpga_vivado: main.bit
 	@echo "########################################"
