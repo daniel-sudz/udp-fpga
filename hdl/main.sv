@@ -24,6 +24,7 @@ eth_tx_en,
 eth_txd //4-bit
 );
 
+// General
 input wire mainclk;     // 100 MHz
 logic [16:0] clk_divider;
 logic dataclk;           // 25 MHz
@@ -31,6 +32,14 @@ logic uartclk;           // 12.5 MHz
 input wire [3:0] btn;   // Buttons
 input wire [3:0] sw;    // Switches
 logic rst;
+
+// Output
+input wire uart_txd_in;
+output logic uart_rxd_out;
+wire tx_ready;
+logic tx_valid;
+logic [7:0] tx_data;
+logic [31:0] read_buffer;
 
 always_comb rst = |btn;
 
@@ -58,16 +67,21 @@ enum logic [2:0] {
 logic change_state;
 logic eth_start;
 logic uart_start;
+logic one_shot;
 
 always_ff @(posedge mainclk) begin : Finite_State_Machine
     if(rst) begin
         eth_state<=E_IDLE;
+        one_shot<=1;
+        eth_start<=1;
+        uart_start<=1;
         // uart_state<=U_IDLE;
     end
     if(eth_state==E_IDLE & change_state) begin
         eth_state<=E_REC;
         eth_start<=0;
         uart_start<=1;
+        one_shot<=0;
     end else if(eth_state==E_REC & change_state) begin
         eth_state<=U_TX;
         eth_start<=1;
@@ -80,14 +94,14 @@ always_ff @(posedge mainclk) begin : Finite_State_Machine
 end
 
 always_comb begin : State_Change
-    if(eth_state==E_IDLE) begin
+    if(eth_state==E_IDLE & one_shot) begin
         change_state=eth_rx_dv;
     end
     if(eth_state==E_REC) begin
         change_state=~eth_rx_dv & tx_ready;
     end
     if(eth_state==U_TX) begin
-        change_state=0; // TODO: add correct bound
+        change_state=(uart_addr==9'd374); // TODO: add correct bound
     end
 end
 
@@ -170,12 +184,6 @@ bytewise_block_ram RAM(
 );
 
 //#########################        OUTPUT        ###############################
-input wire uart_txd_in;
-output logic uart_rxd_out;
-wire tx_ready;
-logic tx_valid;
-logic [7:0] tx_data;
-logic [31:0] read_buffer;
 
 uart_driver UART(.clk(uartclk), .rst(rst), // reset with rest of system
                 .rx_data(), .rx_valid(), // no rx functionality
@@ -188,8 +196,10 @@ always_ff @(posedge eth_rx_clk) begin : UART_Transmit // run "make usb"
         uart_addr<=0;
         uartbitcounter<=0;
         read_buffer<=0;
+        tx_data<=0;
+        tx_valid<=0;
     end else begin
-        if(tx_ready) begin // TODO: add some sort of error detection for write/read
+        if(eth_state==U_TX & tx_ready) begin // TODO: add some sort of error detection for write/read
             tx_valid<=1;
             // if(circle_buffer[read_pointer]) begin
             if(read_buffer[0]) begin
@@ -225,7 +235,7 @@ logic [2:0] global_led_pwm;
 
 always_comb begin : LED_drivers
     if(&global_led_pwm) begin
-        if(|sw) begin
+        if(sw[3]) begin
             // 0 - Yellow for RX valid
             led0_b = 0;
             led0_g = eth_rx_dv;
@@ -245,6 +255,26 @@ always_comb begin : LED_drivers
             led2_b = eth_crs;
             led2_g = 0;
             led2_r = eth_crs;
+        end else if(sw[2]) begin
+            // 0 - Green for IDLE
+            led0_b = 0;
+            led0_g = eth_state==E_IDLE;
+            led0_r = 0;
+
+            // 1 - Yellow for E_REC
+            led1_b = 0;
+            led1_g = eth_state==E_REC;
+            led1_r = 0;
+
+            // 2 - Red for U_TX
+            led2_b = 0;
+            led2_g = 0;
+            led2_r = eth_state==U_TX;
+
+            // 3 - Pink for uart_addr
+            led3_b = uart_addr[6];
+            led3_g = 0;
+            led3_r = uart_addr[6];
         end else begin
             // 0 - White on reset
             led0_b = rst;
