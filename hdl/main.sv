@@ -1,7 +1,5 @@
 `timescale 1ns/1ps
 
-`timescale 1ns/1ps
-
 module main(mainclk,
 btn,
 sw,
@@ -126,10 +124,26 @@ input wire eth_tx_clk;      // Derived TX clock
     output logic [3:0] eth_txd; // TX data
 
 // Dump buffer
-parameter size = 32;
-logic [size-1:0] circle_buffer;
-logic [$clog2(size)-1:0] write_pointer;
-logic [$clog2(size)-1:0] read_pointer;
+// parameter size = 32;
+// logic [size-1:0] circle_buffer;
+// logic [$clog2(size)-1:0] write_pointer;
+// logic [$clog2(size)-1:0] read_pointer;
+
+// Pair flipping (don't ask me why this is or why this isn't we do not ask)
+logic [31:0] eth_wr_data;
+always_comb begin
+    wr_data[31:28]=eth_wr_data[27:24];
+    wr_data[27:24]=eth_wr_data[31:28];
+
+    wr_data[23:20]=eth_wr_data[19:16];
+    wr_data[19:16]=eth_wr_data[23:20];
+
+    wr_data[15:12]=eth_wr_data[11:8];
+    wr_data[11:8]=eth_wr_data[15:12];
+
+    wr_data[7:4]=eth_wr_data[3:0];
+    wr_data[3:0]=eth_wr_data[7:4];
+end
 
 // Clocks
 always_comb eth_ref_clk = dataclk;
@@ -145,7 +159,7 @@ always_ff @(posedge eth_rx_clk) begin : Ethernet_Receive
         // circle_buffer<='0;
         // write_pointer<=0;
         eth_addr<=0;
-        wr_data<=0;
+        eth_wr_data<=0;
         wr_ena<=0;
         ethbitcounter<=0;
     end else begin
@@ -155,8 +169,8 @@ always_ff @(posedge eth_rx_clk) begin : Ethernet_Receive
             // circle_buffer[write_pointer+2]<=eth_rxd[2];
             // circle_buffer[write_pointer+3]<=eth_rxd[3];
             // write_pointer <= write_pointer + 4;
-            wr_data[27:0]<=wr_data[31:4];
-            wr_data[31:28]<={eth_rxd[3],eth_rxd[2],eth_rxd[1],eth_rxd[0]};
+            eth_wr_data[27:0]<=eth_wr_data[31:4];
+            eth_wr_data[31:28]<={eth_rxd[3],eth_rxd[2],eth_rxd[1],eth_rxd[0]};
             ethbitcounter<=ethbitcounter+1;
             if(&ethbitcounter) begin
                 eth_addr<=eth_addr+1; // This is one addr desynced
