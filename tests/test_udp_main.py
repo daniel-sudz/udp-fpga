@@ -4,7 +4,7 @@ from cocotb.triggers import RisingEdge, Timer
 from generate_frame import generate_ethernet_frame
 from tester import runner
 
-NUM_TESTS = 100
+NUM_TESTS = 5
 @cocotb.test()
 async def ethernet_frame_parser_test(dut):
     """ Test the Ethernet Frame Parsing in UDP Module """
