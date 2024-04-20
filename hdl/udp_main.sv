@@ -31,7 +31,6 @@
             DETECT_PREAMBLE = 1,
             PARSE_ETH = 2,
             PROCESS_PAYLOAD = 3,
-            SKIP_FRAME = 4
         } state_t;
 
         state_t state = IDLE; // start state is idle
@@ -82,10 +81,10 @@
                             if (byte_count > 0) header_buffer[byte_count - 1] <= eth_byte;
                             byte_count <= byte_count + 1;
                         end else {
-                            // Check if the 12th and 13th bytes match IPv4 Ethertype
+                            // check ethertype bytes (13 and 14)
                             if (header_buffer[12] == 8'h08 && header_buffer[13] == 8'h00) {
                                 valid_ip <= 1;
-                                state <= PROCESS_PAYLOAD;  // Continue to process this frame
+                                state <= PROCESS_PAYLOAD;  // process frame
                             } else {
                                 // skip frame and wait for next one
                                 state <= IDLE;
