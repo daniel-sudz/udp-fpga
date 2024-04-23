@@ -158,7 +158,7 @@ always_ff @(posedge eth_rx_clk) begin : Ethernet_Receive
     if(rst|eth_start) begin
         // circle_buffer<='0;
         // write_pointer<=0;
-        eth_addr<=0;
+        eth_addr<='1;
         eth_wr_data<=0;
         wr_ena<=0;
         ethbitcounter<=0;
@@ -174,6 +174,7 @@ always_ff @(posedge eth_rx_clk) begin : Ethernet_Receive
             ethbitcounter<=ethbitcounter+1;
             if(&ethbitcounter) begin
                 eth_addr<=eth_addr+1; // This is one addr desynced
+                // (should be fixed via eth_addr start value)
                 if(sw[1]) begin
                     wr_ena<=1;
                 end
@@ -206,8 +207,8 @@ always_comb begin
 end
 
 block_ram #(.INIT("custom.memh")) RAM(
-  .clk(mainclk), .rd_addr(addr), .rd_data(rd_data),
-  .wr_addr(addr), .wr_ena(wr_ena), .wr_data(wr_data)
+  .clk(mainclk), .rd_addr(uart_addr), .rd_data(rd_data),
+  .wr_addr(eth_addr), .wr_ena(wr_ena), .wr_data(wr_data)
 );
 
 //#########################        OUTPUT        ###############################
@@ -221,8 +222,8 @@ uart_driver UART(.clk(uartclk), .rst(rst), // reset with rest of system
 always_ff @(posedge uartclk) begin : UART_Transmit // run "make usb"
     if(rst|uart_start) begin
         uart_addr<=0;
-        uartbitcounter<=0;
-        read_buffer<=0;
+        uartbitcounter<=5'd3;
+        read_buffer<=rd_data; //should fix 0 print error
         tx_data<=0;
         tx_valid<=0;
     end else begin
@@ -262,8 +263,10 @@ always_ff @(posedge uartclk) begin : UART_Transmit // run "make usb"
                 4'd15: tx_data<=8'h66;
             endcase
             uartbitcounter<=uartbitcounter+4;
-            if(&(~uartbitcounter)) begin
+            if(uartbitcounter==5'd3) begin
                 uart_addr<=uart_addr+1;
+            end
+            if(&uartbitcounter) begin
                 read_buffer<=rd_data;
             end else begin
                 read_buffer[27:0]<=read_buffer[31:4];
