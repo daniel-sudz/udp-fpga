@@ -1,0 +1,53 @@
+#include "AudioFile.h"
+#include <filesystem>
+#include <string>
+
+#include "ether.cpp"
+
+int main (int argc, char * argv[]) {
+    std::cout<<"[INFO]: running UDP watch"<<std::endl;
+
+    EtherParams params;
+    strcpy(params.DEFAULT_IF, argv[2]);
+    
+    EtherPacketWatchIPV4UDP packet_watch(params);
+    if(packet_watch.bind() == -1) {
+        perror("[ERROR]: packet watch failed to bind");
+        exit(1);
+    }
+    std::cout<<"[INFO]: packet watch binded successfully!"<<std::endl;
+
+
+    std::string wave_file = argv[1];
+    
+    AudioFile<int16_t> audio_file;
+    audio_file.load(wave_file);
+    audio_file.printSummary();
+
+    int num_samples = audio_file.getNumSamplesPerChannel();
+    int samples_per_packet = 300;
+
+    int sample = 0;
+    while(sample < num_samples) {
+        uint32_t buffer[samples_per_packet];
+
+        for(int i=0;i<samples_per_packet;i++) {
+            if(i+sample == num_samples) {
+                buffer[i] = 0;
+            }
+            else {
+                int16_t left_sample = audio_file.samples[0][sample];
+                int16_t right_sample = audio_file.samples[1][sample];
+
+                buffer[i] = (left_sample << 16) + right_sample;
+                sample++;
+            }
+        }
+
+        // send audio over UDP!
+        packet_watch.send_udp((uint8_t*)buffer, sizeof(buffer), 0, {});
+        //std::cout<<"[INFO]: send UDP packet with sample starting at "<<sample<<"!"<<std::endl;
+
+    }
+
+}

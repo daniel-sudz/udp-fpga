@@ -17,7 +17,7 @@
 
 
 struct EtherParams {
-    char DEFAULT_IF[IFNAMSIZ-1] = "lo";
+    char DEFAULT_IF[IFNAMSIZ-1] = "enp0s31f6";
 };
 
 /* Ethernet frames are read directly into the buffer field of this struct */ 
@@ -306,6 +306,7 @@ private:
 };
 
 
+/*
 int main() {
     std::cout<<"[INFO]: running UDP watch"<<std::endl;
 
@@ -326,3 +327,4 @@ int main() {
     }
    
 }
+*/
