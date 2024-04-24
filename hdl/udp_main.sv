@@ -1,141 +1,134 @@
-    `timescale 1ns/1ps
+`timescale 1ns / 1ps
 
-    module udp_main(main_clk, main_rst, eth_frame, valid_ip,valid_udp,frame_start,udp_payload);
+module udp_main(
+    input wire main_clk,
+    input wire main_rst,
+    input wire [7:0] eth_byte,
+    input wire input_ready,
+    output reg valid_ip,
+    output reg valid_udp,
+    output reg [7:0] udp_byte
+);
 
-        //PARAMETERS
-        parameter FRAME_WIDTH = 12000; // assuming 1500 byte eth frame width
+    // PARAMETERS
+    parameter FRAME_WIDTH = 1500; // assuming 1500 bytes
+    parameter READ_OFFSET = 4;    // first 4 bytes are potentially grabbed from a different packet
 
-        // INPUTS
-        input wire main_clk;
-        input wire main_rst;
-        input wire [FRAME_WIDTH-1:0] eth_frame;
-        input wire frame_start;
+    // BUFFERS & REGISTERS
+    reg [7:0] preamble_buffer[6:0]; // store last 7 bytes
+    reg [7:0] header_buffer[19:0];  // store header for processing, increased size for potential options
+    reg [4:0] byte_count = 0;       // count bytes after SFD
+    reg new_frame = 0;              // high if preamble detected 
+    integer i; // def iterable
 
-        // OUTPUTS
-        output reg valid_ip;
-        output reg valid_udp;
+    // STATE DEFINITION
+    typedef enum {
+        DETECT_PREAMBLE = 0,
+        PARSE_ETH = 1,
+        DETECT_OPTIONS = 2,
+        PARSE_IP = 3,
+        SEND_PAYLOAD = 4
+    } state_t;
 
-        // ETHERNET HEADER PARTS
-        wire [47:0] eth_mac_dest;
-        wire [47:0] eth_mac_src;
-        wire [15:0] eth_type;
-        wire [31:0] eth_frc;
+    state_t state = DETECT_PREAMBLE; // initial state
 
-
-        // IPV4 HEADER PARTS
-        // assigned conditionally after valid_ip check
-        reg [3:0] ip_version;
-        reg [3:0] ip_ihl;
-        reg [5:0] ip_dscp;
-        reg [1:0] ip_ecn;
-        reg [15:0] ip_length;
-        reg [15:0] ip_id;
-        reg [1:0] ip_flags;
-        reg [13:0] ip_frag_off;
-        reg [7:0] ip_ttl;
-        reg [7:0] ip_protocol;
-        reg [15:0] ip_checksum;
-        reg [31:0] ip_src_addr;
-        reg [31:0] ip_dest_addr;
-
-        // UDP HEADER PARTS
-        // assigned conditionally after valid_udp check
-        reg [15:0] udp_src;
-        reg [15:0] udp_dest;
-        reg [15:0] udp_length;
-        reg [15:0] udp_checksum;
-        output reg [11294:0] udp_payload;
-
-
-    // setup state machine for header parsing
-        typedef enum {
-            IDLE = 0,
-            CHECK_IP = 1,
-            PARSE_IP = 2,
-            CHECK_UDP = 3,
-            PARSE_UDP = 4,
-            SKIP_FRAME = 5
-        } state_t;
-
-        state_t state = IDLE; // start state is idle
-
-        // grab eth headers
-        assign eth_mac_dest = eth_frame[47:0];
-        assign eth_mac_src = eth_frame[95:48];
-        assign eth_type = eth_frame[111:96];
-        assign eth_frc = eth_frame[FRAME_WIDTH-1:11630];
-
-
-        // frame handling state machine
-        always_ff @(posedge main_clk) begin
-            if (main_rst) begin
-                state <= IDLE;  // on reset return to idle
-                valid_ip <= 1'b0;
-                valid_udp <= 1'b0;
-            end else begin
-
-                case (state)
-                    IDLE: begin
-                        if (frame_start)  // when new frame starts:
-                            state <= CHECK_IP;
-                    end
-
-                    CHECK_IP: begin
-                        // check ethtype for 0x0800
-                        if (eth_type == 16'h0800) begin
-                            valid_ip <= 1'b1;
-                            state <= PARSE_IP;
-                        end else begin
-                            valid_ip <= 1'b0;
-                            state <= SKIP_FRAME;  // skip frame
-                        end
-                    end
-
-                    PARSE_IP: begin
-                        // conditionally assign ip headers
-                        ip_version = eth_frame[115:112];
-                        ip_ihl = eth_frame[119:116]; // if > 5, options are present (add options parsing)
-                        ip_dscp = eth_frame[125:120];
-                        ip_ecn = eth_frame[127:126];
-                        ip_length = eth_frame[143:128];
-                        ip_id = eth_frame[159:144];
-                        ip_flags = eth_frame[161:160];
-                        ip_frag_off = eth_frame[175:162];
-                        ip_ttl = eth_frame[185:176];
-                        ip_protocol = eth_frame[191:184];
-                        ip_checksum = eth_frame[207:192];
-                        ip_src_addr = eth_frame[239:208];
-                        ip_dest_addr = eth_frame[271:240];
-                        state <= CHECK_UDP;
-                    end
-
-                    CHECK_UDP: begin
-                        if (ip_protocol == 8'h11) begin // check if ip_protocol is UDP
-                            valid_udp <= 1'b1;
-                            state <= PARSE_UDP;
-                        end else begin
-                            valid_udp <= 1'b0;
-                            state <= SKIP_FRAME;
-                        end
-                    end
-
-                    PARSE_UDP: begin
-                        udp_src = eth_frame[287:272];
-                        udp_dest = eth_frame[303:288];
-                        udp_length = eth_frame[319:304];
-                        udp_checksum = eth_frame[335:320];
-                        udp_payload = eth_frame[11630:336]; // assuming constant udp length
-                        state <= IDLE;
-                    end
-
-                    SKIP_FRAME: begin
-                        // wait until new frame is detected (to implement based on crc)
-                        if (frame_start)
-                            state <= IDLE;
-                    end
-                    
-                endcase
+    always_ff @(posedge main_clk) begin
+        if (main_rst) begin
+            state <= DETECT_PREAMBLE;
+            valid_ip <= 0;
+            valid_udp <= 0;
+            new_frame <= 0;
+            byte_count <= 0;
+            // on reset, clear the buffers
+            for (i = 0; i < 20; i = i + 1) begin
+                header_buffer[i] <= 8'd0;
             end
-        end
-    endmodule
+        end else if (input_ready) begin
+            // shift in data through preamble buffer
+            preamble_buffer[6] <= preamble_buffer[5];
+            preamble_buffer[5] <= preamble_buffer[4];
+            preamble_buffer[4] <= preamble_buffer[3];
+            preamble_buffer[3] <= preamble_buffer[2];
+            preamble_buffer[2] <= preamble_buffer[1];
+            preamble_buffer[1] <= preamble_buffer[0];
+            preamble_buffer[0] <= eth_byte;
 
+            case (state)
+                DETECT_PREAMBLE: begin
+                    // check if last 7 bytes match preamble
+                    if (preamble_buffer[6] == 8'h55 && preamble_buffer[5] == 8'h55 &&
+                        preamble_buffer[4] == 8'h55 && preamble_buffer[3] == 8'h55 &&
+                        preamble_buffer[2] == 8'h55 && preamble_buffer[1] == 8'h55 &&
+                        preamble_buffer[0] == 8'hD5) begin
+                        new_frame <= 1;
+                        byte_count <= 0;
+                        state <= PARSE_ETH; // transition to PARSE_ETH if match found
+                    end
+                end
+
+                PARSE_ETH: begin
+                    if (new_frame) begin
+                        new_frame <= 0; // Reset new_frame after detecting it
+                    end else if (byte_count > 0) begin
+                        if (byte_count < 14 ) begin
+                            header_buffer[byte_count - 1] <= eth_byte;
+                        end else if (byte_count == 14) begin  // check ethertype
+                            if (header_buffer[11] == 8'h08 && header_buffer[12] == 8'h00) begin
+                                valid_ip <= 1;
+                                state <= DETECT_OPTIONS;  // move to detect options
+                                byte_count <= 0;  // reset byte count (using same header...)
+                            end else
+                                state <= DETECT_PREAMBLE;  // not an IP packet, return to idle
+                        end
+                    end
+                    byte_count <= byte_count + 1;
+                end
+
+                DETECT_OPTIONS: begin
+                    if (byte_count < 20) begin  // parse up to the first 20 bytes of the IPv4 frame
+                        header_buffer[byte_count] <= eth_byte;
+                        byte_count <= byte_count + 1;
+                        if (byte_count == 1 && (header_buffer[0] & 4'h0F) > 5) begin // check value of ihl
+                            state <= DETECT_PREAMBLE;  // skip all packets with options
+                        end
+                        state <= PARSE_IP;
+                    end
+                end
+
+                PARSE_IP: begin
+                    if (byte_count < 20) begin  // keep updating buffer
+                        header_buffer[byte_count] <= eth_byte;
+                        byte_count <= byte_count + 1;
+                    end
+                    if (byte_count == 10 && header_buffer[9] == 8'h11) begin // udp check
+                        valid_udp <= 1;
+                        state <= SEND_PAYLOAD;
+                    end else if (byte_count == 10) begin
+                        state <= DETECT_PREAMBLE; // skip if not udp
+                    end
+                end
+
+                SEND_PAYLOAD: begin
+                    if (byte_count > 20) begin
+                        udp_byte <= eth_byte; // stream output
+                    end
+                    byte_count <= byte_count + 1;
+                    // questionable... need to think about better way to do this since it copies first state...
+                    if (preamble_buffer[6] == 8'h55 && preamble_buffer[5] == 8'h55 &&
+                        preamble_buffer[4] == 8'h55 && preamble_buffer[3] == 8'h55 &&
+                        preamble_buffer[2] == 8'h55 && preamble_buffer[1] == 8'h55 &&
+                        preamble_buffer[0] == 8'hD5) begin
+                        byte_count <= 0;
+                        new_frame <= 1;
+                        state <= PARSE_ETH; 
+                    end
+                end
+
+                
+
+                default: state <= DETECT_PREAMBLE; // default case
+            endcase
+        end
+    end
+
+endmodule
