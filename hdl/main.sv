@@ -112,21 +112,22 @@ always_ff @(posedge mclk) begin : clocks_and_dividers
 end
 
 always_comb begin
-    wch1={8'b0,pb_read_buffer[15:0]};
-    wch2={8'b0,pb_read_buffer[31:16]};
+    wch1={pb_read_buffer[15:0], 8'b0};
+    wch2={pb_read_buffer[31:16], 8'b0};
 end
 
 always_ff @(posedge lrclk) begin : I2S2_Transmit
     if(rst|pb_start) begin
         pb_addr<=0;
         pbbitcounter<=0;
-        pb_read_buffer[31:0]<=rd_data; //should fix 0 print error
+        pb_read_buffer<=32'h55555555;
     end else begin
         if(eth_state==PLAY_BACK) begin
             if(pbbitcounter) begin
                 pb_addr<=pb_addr+1;
                 pb_read_buffer<=rd_data;
             end
+            pbbitcounter<=~pbbitcounter;
         end
     end
 end
@@ -156,11 +157,13 @@ logic uart_start;
 logic pb_start;
 
 logic one_shot;
+logic skip_uart;
 
 always_ff @(posedge mainclk) begin : Finite_State_Machine
     if(rst) begin
         eth_state<=E_IDLE;
         one_shot<=1;
+        skip_uart<=0;
         eth_start<=1;
         uart_start<=1;
         pb_start<=1;
@@ -177,7 +180,7 @@ always_ff @(posedge mainclk) begin : Finite_State_Machine
         eth_start<=1;
         uart_start<=0; 
         pb_start<=1;
-    end else if(eth_state==U_TX & change_state) begin
+    end else if(eth_state==U_TX & (change_state | skip_uart)) begin
         eth_state<=PLAY_BACK;
         eth_start<=1;
         uart_start<=1;
@@ -188,7 +191,13 @@ always_ff @(posedge mainclk) begin : Finite_State_Machine
         uart_start<=1;
         pb_start<=1;
     end
-    one_shot<=btn[0];
+    if(sw[0]) begin
+        one_shot<=1;
+        skip_uart<=1;
+    end else begin
+        one_shot<=btn[0];
+        skip_uart<=0;
+    end
 end
 
 always_comb begin : State_Change
@@ -323,10 +332,11 @@ uart_driver UART(.clk(uartclk), .rst(rst), // reset with rest of system
 );
 
 always_ff @(posedge uartclk) begin : UART_Transmit // run "make usb"
+    // TODO: nasty bug that occurs when running too fast causes whole thing to freeze
     if(rst|uart_start) begin
         uart_addr<=0;
         uartbitcounter<=5'd3;
-        read_buffer<=rd_data; //should fix 0 print error
+        read_buffer<=32'h55555555; //should fix 0 print error
         tx_data<=0;
         tx_valid<=0;
     end else begin
@@ -431,10 +441,10 @@ always_comb begin : LED_drivers
             led2_g = 0;
             led2_r = eth_state==U_TX;
 
-            // 3 - Pink for uart_addr
-            led3_b = uart_addr[6];
+            // 3 - Pink for PLAY_BACK
+            led3_b = eth_state==PLAY_BACK;
             led3_g = 0;
-            led3_r = uart_addr[6];
+            led3_r = eth_state==PLAY_BACK;
         end else begin
             // 0 - White on reset
             led0_b = rst;
