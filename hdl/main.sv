@@ -21,14 +21,18 @@ eth_rxd, //4-bit
 eth_rxerr,
 eth_tx_clk,
 eth_tx_en,
-eth_txd //4-bit
+eth_txd, //4-bit
+mclk, // I2S2
+lrclk,
+sclk,
+sdin
 );
 
 // General
-input wire mainclk;     // 100 MHz
+input wire mainclk;     // 100 MHz | 90.24 MHz
 logic [16:0] clk_divider;
-logic dataclk;           // 25 MHz
-logic uartclk;           // 12.5 MHz
+logic dataclk;           // 25 MHz | 22.56 MHz
+logic uartclk;           // 12.5 MHz | 11.28 MHz
 input wire [3:0] btn;   // Buttons
 input wire [3:0] sw;    // Switches
 logic rst;
@@ -40,6 +44,7 @@ wire tx_ready;
 logic tx_valid;
 logic [7:0] tx_data;
 logic [31:0] read_buffer;
+logic [31:0] pb_read_buffer;
 
 always_comb rst = |btn[3:1];
 
@@ -49,13 +54,95 @@ always_ff @(posedge mainclk) begin : Clock_Divider
     clk_divider <= clk_divider + 1;
 end
 
+//##########################        I2S2        ################################
+
+output logic mclk;
+output logic lrclk;
+output logic sclk;
+output logic sdin;
+
+logic [23:0] wch1, wch2;
+parameter sclk_divider = 1; 
+logic [sclk_divider:0] sclk_counter; //4x less
+parameter lrclk_divider = 7;
+logic [lrclk_divider:0] lrclk_counter; //256x less
+parameter mclk_divider = 2;
+logic [mclk_divider:0] mclk_counter; //11.28 MHz
+
+//Clock divider
+always_comb begin
+  sclk = sclk_counter[sclk_divider];
+  mclk = mclk_counter[mclk_divider];
+  lrclk = lrclk_counter[lrclk_divider];
+end
+
+//Clock counters
+always_ff @(posedge mainclk) begin : main_clock
+    if (rst) begin
+      mclk_counter <= 0;
+    end else begin
+        if(&mclk_counter) begin
+        mclk_counter <= 0;
+      end
+      else begin
+        mclk_counter <= mclk_counter + 1;
+      end
+    end
+end 
+always_ff @(posedge mclk) begin : clocks_and_dividers 
+  if (rst) begin
+      sclk_counter <= 0;
+      lrclk_counter <= 0;
+  end
+  else begin
+      if(&sclk_counter) begin
+        sclk_counter <= 0;
+      end
+      else begin
+        sclk_counter <= sclk_counter + 1;
+      end
+      
+      if(&lrclk_counter) begin
+        lrclk_counter <= 0;
+      end
+      else begin
+        lrclk_counter <= lrclk_counter + 1;
+      end    
+  end
+end
+
+always_comb begin
+    wch1={pb_read_buffer[15:0], 8'b0};
+    wch2={pb_read_buffer[31:16], 8'b0};
+end
+
+always_ff @(posedge lrclk) begin : I2S2_Transmit
+    if(rst|pb_start) begin
+        pb_addr<=0;
+        pbbitcounter<=0;
+        pb_read_buffer<=32'h55555555;
+    end else begin
+        if(eth_state==PLAY_BACK) begin
+            if(pbbitcounter) begin
+                pb_addr<=pb_addr+1;
+                pb_read_buffer<=rd_data;
+            end
+            pbbitcounter<=~pbbitcounter;
+        end
+    end
+end
+
+i2s2 AUDIO(.rch1(), .rch2(), .wch1(wch1), .wch2(wch2), .datain(), .dataout(sdin),
+            .valid(), .lrclk(lrclk), .sclk(sclk), .mclk(mclk), .rst(rst));
+
 //#######################        FS MACHINE        #############################
 
 enum logic [2:0] {
     E_ERR = 0,
     E_IDLE = 1,
     E_REC = 2,
-    U_TX = 3
+    U_TX = 3,
+    PLAY_BACK = 4
 } eth_state; 
 
 // enum logic [2:0] {
@@ -67,31 +154,50 @@ enum logic [2:0] {
 logic change_state;
 logic eth_start;
 logic uart_start;
+logic pb_start;
+
 logic one_shot;
+logic skip_uart;
 
 always_ff @(posedge mainclk) begin : Finite_State_Machine
     if(rst) begin
         eth_state<=E_IDLE;
         one_shot<=1;
+        skip_uart<=0;
         eth_start<=1;
         uart_start<=1;
+        pb_start<=1;
         // uart_state<=U_IDLE;
     end
     if(eth_state==E_IDLE & change_state) begin
         eth_state<=E_REC;
         eth_start<=0;
         uart_start<=1;
+        pb_start<=1;
         one_shot<=0;
     end else if(eth_state==E_REC & change_state) begin
         eth_state<=U_TX;
         eth_start<=1;
         uart_start<=0; 
-    end else if(eth_state==U_TX & change_state) begin
+        pb_start<=1;
+    end else if(eth_state==U_TX & (change_state | skip_uart)) begin
+        eth_state<=PLAY_BACK;
+        eth_start<=1;
+        uart_start<=1;
+        pb_start<=0;
+    end else if(eth_state==PLAY_BACK & change_state) begin
         eth_state<=E_IDLE;
         eth_start<=1;
         uart_start<=1;
+        pb_start<=1;
     end
-    one_shot<=btn[0];
+    if(sw[0]) begin
+        one_shot<=1;
+        skip_uart<=1;
+    end else begin
+        one_shot<=btn[0];
+        skip_uart<=0;
+    end
 end
 
 always_comb begin : State_Change
@@ -101,6 +207,8 @@ always_comb begin : State_Change
         change_state=~eth_rx_dv & tx_ready;
     end else if(eth_state==U_TX) begin
         change_state=(uart_addr>=9'd375); // TODO: add correct bound (375?)
+    end else if(eth_state==PLAY_BACK) begin
+        change_state=(pb_addr>=9'd375);
     end else begin
         change_state=0;
     end
@@ -190,25 +298,29 @@ end
 logic [8:0] addr;
 logic [8:0] eth_addr;
 logic [8:0] uart_addr;
+logic [8:0] pb_addr;
 logic wr_ena;
 logic [31:0] wr_data;
 wire [31:0] rd_data;
 logic [2:0] ethbitcounter;
 logic [4:0] uartbitcounter;
+logic pbbitcounter;
 
 always_comb begin
     if(eth_state==E_REC) begin
         addr = eth_addr;
     end else if(eth_state==U_TX) begin
         addr = uart_addr;
+    end  else if(eth_state==PLAY_BACK) begin
+        addr = pb_addr;
     end else begin
         addr = 0;
     end
 end
 
 block_ram #(.INIT("custom.memh")) RAM(
-  .clk(mainclk), .rd_addr(uart_addr), .rd_data(rd_data),
-  .wr_addr(eth_addr), .wr_ena(wr_ena), .wr_data(wr_data)
+  .clk(mainclk), .rd_addr(addr), .rd_data(rd_data),
+  .wr_addr(addr), .wr_ena(wr_ena), .wr_data(wr_data)
 );
 
 //#########################        OUTPUT        ###############################
@@ -220,10 +332,11 @@ uart_driver UART(.clk(uartclk), .rst(rst), // reset with rest of system
 );
 
 always_ff @(posedge uartclk) begin : UART_Transmit // run "make usb"
+    // TODO: nasty bug that occurs when running too fast causes whole thing to freeze
     if(rst|uart_start) begin
         uart_addr<=0;
         uartbitcounter<=5'd3;
-        read_buffer<=rd_data; //should fix 0 print error
+        read_buffer<=32'h55555555; //should fix 0 print error
         tx_data<=0;
         tx_valid<=0;
     end else begin
@@ -328,10 +441,10 @@ always_comb begin : LED_drivers
             led2_g = 0;
             led2_r = eth_state==U_TX;
 
-            // 3 - Pink for uart_addr
-            led3_b = uart_addr[6];
+            // 3 - Pink for PLAY_BACK
+            led3_b = eth_state==PLAY_BACK;
             led3_g = 0;
-            led3_r = uart_addr[6];
+            led3_r = eth_state==PLAY_BACK;
         end else begin
             // 0 - White on reset
             led0_b = rst;
