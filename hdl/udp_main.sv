@@ -6,7 +6,8 @@ module udp_main(
     input wire [7:0] eth_byte,
     input wire input_ready,
     output reg valid_ip,
-    output reg valid_udp
+    output reg valid_udp,
+    output reg [7:0] udp_byte
 );
 
     // PARAMETERS
@@ -22,18 +23,18 @@ module udp_main(
 
     // STATE DEFINITION
     typedef enum {
-        IDLE = 0,
-        DETECT_PREAMBLE = 1,
-        PARSE_ETH = 2,
-        DETECT_OPTIONS = 3,
-        PARSE_IP = 4
+        DETECT_PREAMBLE = 0,
+        PARSE_ETH = 1,
+        DETECT_OPTIONS = 2,
+        PARSE_IP = 3,
+        SEND_PAYLOAD = 4
     } state_t;
 
-    state_t state = IDLE; // initial state
+    state_t state = DETECT_PREAMBLE; // initial state
 
     always_ff @(posedge main_clk) begin
         if (main_rst) begin
-            state <= IDLE;
+            state <= DETECT_PREAMBLE;
             valid_ip <= 0;
             valid_udp <= 0;
             new_frame <= 0;
@@ -53,10 +54,6 @@ module udp_main(
             preamble_buffer[0] <= eth_byte;
 
             case (state)
-                IDLE: begin
-                    state <= DETECT_PREAMBLE;
-                end
-
                 DETECT_PREAMBLE: begin
                     // check if last 7 bytes match preamble
                     if (preamble_buffer[6] == 8'h55 && preamble_buffer[5] == 8'h55 &&
@@ -73,19 +70,18 @@ module udp_main(
                     if (new_frame) begin
                         new_frame <= 0; // Reset new_frame after detecting it
                     end else if (byte_count > 0) begin
-                        if (byte_count > 1) begin
-                            header_buffer[byte_count - 2] <= eth_byte;
-                        end
-                        byte_count <= byte_count + 1;
-                        if (byte_count == 14) begin  // check ethertype
+                        if (byte_count < 14 ) begin
+                            header_buffer[byte_count - 1] <= eth_byte;
+                        end else if (byte_count == 14) begin  // check ethertype
                             if (header_buffer[11] == 8'h08 && header_buffer[12] == 8'h00) begin
                                 valid_ip <= 1;
                                 state <= DETECT_OPTIONS;  // move to detect options
-                                byte_count <= 0;  // Reset byte count for IPv4 header parsing
+                                byte_count <= 0;  // reset byte count (using same header...)
                             end else
-                                state <= IDLE;  // not an IP packet, return to idle
+                                state <= DETECT_PREAMBLE;  // not an IP packet, return to idle
                         end
                     end
+                    byte_count <= byte_count + 1;
                 end
 
                 DETECT_OPTIONS: begin
@@ -93,16 +89,44 @@ module udp_main(
                         header_buffer[byte_count] <= eth_byte;
                         byte_count <= byte_count + 1;
                         if (byte_count == 1 && (header_buffer[0] & 4'h0F) > 5) begin // check value of ihl
-                            state <= IDLE;  // skip all packets with options
+                            state <= DETECT_PREAMBLE;  // skip all packets with options
                         end
+                        state <= PARSE_IP;
                     end
                 end
 
                 PARSE_IP: begin
-                    //add stuff
+                    if (byte_count < 20) begin  // keep updating buffer
+                        header_buffer[byte_count] <= eth_byte;
+                        byte_count <= byte_count + 1;
+                    end
+                    if (byte_count == 10 && header_buffer[9] == 8'h11) begin // udp check
+                        valid_udp <= 1;
+                        state <= SEND_PAYLOAD;
+                    end else if (byte_count == 10) begin
+                        state <= DETECT_PREAMBLE; // skip if not udp
+                    end
                 end
 
-                default: state <= IDLE; // default case
+                SEND_PAYLOAD: begin
+                    if (byte_count > 20) begin
+                        udp_byte <= eth_byte; // stream output
+                    end
+                    byte_count <= byte_count + 1;
+                    // questionable... need to think about better way to do this since it copies first state...
+                    if (preamble_buffer[6] == 8'h55 && preamble_buffer[5] == 8'h55 &&
+                        preamble_buffer[4] == 8'h55 && preamble_buffer[3] == 8'h55 &&
+                        preamble_buffer[2] == 8'h55 && preamble_buffer[1] == 8'h55 &&
+                        preamble_buffer[0] == 8'hD5) begin
+                        byte_count <= 0;
+                        new_frame <= 1;
+                        state <= PARSE_ETH; 
+                    end
+                end
+
+                
+
+                default: state <= DETECT_PREAMBLE; // default case
             endcase
         end
     end
