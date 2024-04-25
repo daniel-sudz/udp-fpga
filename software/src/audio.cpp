@@ -1,6 +1,8 @@
 #include "AudioFile.h"
 #include <filesystem>
 #include <string>
+#include <chrono>
+
 
 #include "ether.cpp"
 
@@ -28,25 +30,39 @@ int main (int argc, char * argv[]) {
     int samples_per_packet = 300;
 
     int sample = 0;
+    auto start = std::chrono::system_clock::now();
+
     while(sample < num_samples) {
-        uint32_t buffer[samples_per_packet];
+        auto end = std::chrono::system_clock::now();
+        auto elapsed_time = std::chrono::duration<double>(end-start);
+        auto elapsed_seconds = elapsed_time.count();
 
-        for(int i=0;i<samples_per_packet;i++) {
-            if(i+sample == num_samples) {
-                buffer[i] = 0;
-            }
-            else {
-                int16_t left_sample = audio_file.samples[0][sample];
-                int16_t right_sample = audio_file.samples[1][sample];
 
-                buffer[i] = (left_sample << 16) + right_sample;
-                sample++;
+        double time_in_sample = ((double)sample / (double)num_samples) * audio_file.getLengthInSeconds();
+
+        // FPGA does not have a lot of ram so we need to rate limit our send
+        if(elapsed_seconds > time_in_sample) {
+            uint32_t buffer[samples_per_packet];
+
+            for(int i=0;i<samples_per_packet;i++) {
+                if(i+sample == num_samples) {
+                    buffer[i] = 0;
+                }
+                else {
+                    int16_t left_sample = audio_file.samples[0][sample];
+                    int16_t right_sample = audio_file.samples[1][sample];
+
+                    buffer[i] = (left_sample << 16) + right_sample;
+                    sample++;
+                }
             }
+
+            // send audio over UDP!
+            packet_watch.send_udp((uint8_t*)buffer, sizeof(buffer), 0, {});
+            std::cout<<"[INFO]: send UDP packet with sample starting at "<<sample<<"!"<<std::endl;
+
         }
 
-        // send audio over UDP!
-        packet_watch.send_udp((uint8_t*)buffer, sizeof(buffer), 0, {});
-        //std::cout<<"[INFO]: send UDP packet with sample starting at "<<sample<<"!"<<std::endl;
 
     }
 

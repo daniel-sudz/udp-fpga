@@ -13,3 +13,5 @@ cd ..
 DIR="$( dirname -- "${BASH_SOURCE[0]}"; )";  # location of current file
 
 out/src/audio $DIR/src/sound.wav lo
+
+#out/src/noise 
