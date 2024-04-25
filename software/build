@@ -8,4 +8,10 @@ cmake ..
 make
 cd ..
 
-sudo out/src/ether
+#sudo out/src/ether
+
+DIR="$( dirname -- "${BASH_SOURCE[0]}"; )";  # location of current file
+
+out/src/audio $DIR/src/sound.wav lo
+
+#out/src/noise 
