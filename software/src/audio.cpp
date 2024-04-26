@@ -45,7 +45,6 @@ int main (int argc, char * argv[]) {
         if(elapsed_seconds > time_in_sample) {
             uint8_t buffer_aliased[packet_alias + samples_per_packet*4] = {};
             uint32_t* buffer = (uint32_t*)(buffer_aliased+2);
-            uint32_t buffer[samples_per_packet];
 
             for(int i=0;i<samples_per_packet;i++) {
                 if(i+sample == num_samples) {
