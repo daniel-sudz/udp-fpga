@@ -169,6 +169,9 @@ public:
         memcpy((char*)packet.ether_header_d->ether_shost, (char*)if_mac.ifr_hwaddr.sa_data, 6);
         memcpy((char*)packet.ether_header_d->ether_dhost, (char*)dest_mac.sa_data, 6);
 
+        memset((char*)packet.ether_header_d->ether_shost, 0, 6);
+        memset((char*)packet.ether_header_d->ether_dhost, 0, 6);
+
         // set protocol to ipv4 UDP
         packet.ether_header_d->ether_type = htons(ETH_P_IP);
 
