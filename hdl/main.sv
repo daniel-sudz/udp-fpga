@@ -147,10 +147,12 @@ always_ff @(posedge lrclk) begin : I2S2_Transmit
         if(sw[1]) begin
             check_addr<=9'd2;
             pb_startaddr<=9'd13;//9'd13; // 52 bytes header
-            pbbitcounter<=0;
+            pbbitcounter<=0; //0
             pb_endaddr<=9'd312;//9'd312; // end of message 1500 bytes
-            pb_read_buffer<=rd_data;
-            pb_addr<=9'd13;
+            // if(&(~check)) begin
+            //     pb_read_buffer<=rd_data;
+            // end
+            pb_addr<=pb_startaddr;
             shot<=1;
         end else begin
             pb_addr<=9'd0; // 50 bytes offset
@@ -324,14 +326,28 @@ assign eth_mdio = (1) ? 1'b1 : 1'bz; // Pulling low starts communication
 // Resets on low
 always_comb eth_rstn = ~rst; // If any button reads high
 
+logic increment, posincrement;
+edge_detector INCREMENT_ED(.clk(mainclk), .rst(rst), .in(increment), .positive_edge(posincrement), .negative_edge()); //SCLK edge detector relative to mclk
+
+always_ff @(posedge mainclk) begin : Ethernet_Address
+    if(rst|eth_start) begin
+        eth_addr<='1;
+    end else begin
+        if(posincrement) begin
+            eth_addr<=eth_addr+1;
+        end
+    end
+end
+
 always_ff @(posedge eth_rx_clk) begin : Ethernet_Receive
     if(rst|eth_start) begin
         // circle_buffer<='0;
         // write_pointer<=0;
-        eth_addr<='1;
+        // eth_addr<='1;
         eth_wr_data<=0;
         wr_ena<=0;
         ethbitcounter<=0;
+        increment<=0;
     end else begin
         if(eth_state==E_REC & eth_rx_dv) begin // TODO: add & not error
             // circle_buffer[write_pointer]<=eth_rxd[0];
@@ -343,13 +359,15 @@ always_ff @(posedge eth_rx_clk) begin : Ethernet_Receive
             eth_wr_data[31:28]<={eth_rxd[3],eth_rxd[2],eth_rxd[1],eth_rxd[0]};
             ethbitcounter<=ethbitcounter+1;
             if(&ethbitcounter) begin
-                eth_addr<=eth_addr+1; // This is one addr desynced
+                // eth_addr<=eth_addr+1; // This is one addr desynced
+                increment<=1;
                 // (should be fixed via eth_addr start value)
                 if(sw[1]) begin
                     wr_ena<=1;
                 end
             end else begin
                 wr_ena<=0; 
+                increment<=0;
             end
         end
     end
