@@ -2,15 +2,15 @@
 
 // Based on UG901 - The Vivado Synthesis Guide
 
-module block_ram(clk, rd_addr, rd_data, wr_addr, wr_ena, wr_data);
+module block_ram(clk, rd_addr, rd_data, wr_addr, wr_ena, wr_data, rd_addr2, rd_data2);
 
 parameter W = 32; // number of rows of the memory
 parameter L = 375; // Length of the memory row
 parameter INIT = "zeros.memh";
 
 input wire clk;
-input wire [$clog2(L)-1:0] wr_addr, rd_addr;
-output logic [W-1:0] rd_data;
+input wire [$clog2(L)-1:0] wr_addr, rd_addr, rd_addr2;
+output logic [W-1:0] rd_data, rd_data2;
 input wire wr_ena;
 input logic [W-1:0] wr_data;
 
@@ -22,6 +22,7 @@ end
 
 always_ff @(posedge clk) begin : synthesizable_rom
   rd_data <= ram[rd_addr];
+  rd_data2 <= ram[rd_addr2];
   if(wr_ena) begin
     ram[wr_addr] <= wr_data;
   end

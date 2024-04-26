@@ -66,7 +66,7 @@ parameter sclk_divider = 1;
 logic [sclk_divider:0] sclk_counter; //4x less
 parameter lrclk_divider = 7;
 logic [lrclk_divider:0] lrclk_counter; //256x less
-parameter mclk_divider = 2;
+parameter mclk_divider = 2; //2
 logic [mclk_divider:0] mclk_counter; //11.28 MHz
 
 //Clock divider
@@ -76,19 +76,39 @@ always_comb begin
   lrclk = lrclk_counter[lrclk_divider];
 end
 
+// 11.28 MHz clock
+wire clk_feedback;
+MMCME2_BASE #(
+  .BANDWIDTH("OPTIMIZED"),
+  .CLKFBOUT_MULT_F(6.375), //2.0 to 64.0 in increments of 0.125
+  .CLKIN1_PERIOD(10.0),
+  .CLKOUT0_DIVIDE_F(28.250), // Divide amount for CLKOUT0 (1.000-128.000).
+  .DIVCLK_DIVIDE(1), // Master division value (1-106)
+  .CLKOUT0_DUTY_CYCLE(0.5),.CLKOUT0_PHASE(0.0),
+  .STARTUP_WAIT("FALSE") // Delays DONE until MMCM is locked (FALSE, TRUE)
+)
+MMCME2_BASE_inst (
+.CLKOUT0(mclk),
+.CLKIN1(mainclk),
+.PWRDWN(0),
+.RST(rst),
+.CLKFBOUT(clk_feedback),
+.CLKFBIN(clk_feedback)
+);
+// always_ff @(posedge mainclk) begin : main_clock
+//     if (rst) begin
+//       mclk_counter <= 0;
+//     end else begin
+//         if(&mclk_counter) begin
+//         mclk_counter <= 0;
+//       end
+//       else begin
+//         mclk_counter <= mclk_counter + 1;
+//       end
+//     end
+// end 
+
 //Clock counters
-always_ff @(posedge mainclk) begin : main_clock
-    if (rst) begin
-      mclk_counter <= 0;
-    end else begin
-        if(&mclk_counter) begin
-        mclk_counter <= 0;
-      end
-      else begin
-        mclk_counter <= mclk_counter + 1;
-      end
-    end
-end 
 always_ff @(posedge mclk) begin : clocks_and_dividers 
   if (rst) begin
       sclk_counter <= 0;
@@ -112,23 +132,48 @@ always_ff @(posedge mclk) begin : clocks_and_dividers
 end
 
 always_comb begin
-    wch1={pb_read_buffer[15:0], 8'b0};
-    wch2={pb_read_buffer[31:16], 8'b0};
+    wch1={pb_read_buffer[3:0], pb_read_buffer[7:4], pb_read_buffer[11:8], pb_read_buffer[15:12], 8'b0};
+    wch2={pb_read_buffer[19:16], pb_read_buffer[23:20], pb_read_buffer[27:24], pb_read_buffer[31:28], 8'b0};
 end
 
+logic [8:0] pb_endaddr, pb_startaddr, check_addr;
+logic pb_reset, posreset, negreset, shot;
+logic [31:0] check;
+edge_detector S(.clk(lrclk), .rst(rst), .in(pb_reset), .positive_edge(posreset), .negative_edge(negreset)); //SCLK edge detector relative to mclk
+
+
 always_ff @(posedge lrclk) begin : I2S2_Transmit
-    if(rst|pb_start) begin
-        pb_addr<=0;
-        pbbitcounter<=0;
-        pb_read_buffer<=32'h55555555;
+    if(rst|posreset|~(&(~check))) begin
+        if(sw[1]) begin
+            check_addr<=9'd2;
+            pb_startaddr<=9'd13;//9'd13; // 52 bytes header
+            pbbitcounter<=0;
+            pb_endaddr<=9'd312;//9'd312; // end of message 1500 bytes
+            pb_read_buffer<=rd_data;
+            pb_addr<=9'd13;
+            shot<=1;
+        end else begin
+            pb_addr<=9'd0; // 50 bytes offset
+            pbbitcounter<=0;
+            pb_endaddr<=9'd375; // end of message
+            shot<=1;
+        end
     end else begin
-        if(eth_state==PLAY_BACK) begin
-            if(pbbitcounter) begin
-                pb_addr<=pb_addr+1;
-                pb_read_buffer<=rd_data;
+        // if(eth_state==PLAY_BACK) begin
+            if(pb_addr<=pb_endaddr & shot) begin
+                if(pbbitcounter) begin
+                    pb_addr<=pb_addr+1;
+                    pb_read_buffer<=rd_data;
+                end
+            end else begin
+                pb_addr<=pb_startaddr;
+                shot<=0;
+            end
+            if(~sw[1] & pb_addr>pb_endaddr) begin
+                pb_addr<=0;
             end
             pbbitcounter<=~pbbitcounter;
-        end
+        // end
     end
 end
 
@@ -167,6 +212,7 @@ always_ff @(posedge mainclk) begin : Finite_State_Machine
         eth_start<=1;
         uart_start<=1;
         pb_start<=1;
+        pb_reset<=1;
         // uart_state<=U_IDLE;
     end
     if(eth_state==E_IDLE & change_state) begin
@@ -175,28 +221,42 @@ always_ff @(posedge mainclk) begin : Finite_State_Machine
         uart_start<=1;
         pb_start<=1;
         one_shot<=0;
+        pb_reset<=0;
     end else if(eth_state==E_REC & change_state) begin
-        eth_state<=U_TX;
-        eth_start<=1;
-        uart_start<=0; 
-        pb_start<=1;
-    end else if(eth_state==U_TX & (change_state | skip_uart)) begin
-        eth_state<=PLAY_BACK;
+        if(skip_uart) begin
+            eth_state<=E_IDLE;
+            eth_start<=1;
+            uart_start<=1;
+            pb_start<=0;
+            pb_reset<=1;
+        end else begin
+            eth_state<=U_TX;
+            eth_start<=1;
+            uart_start<=0; 
+            pb_start<=1;
+            pb_reset<=1;
+        end
+    end else if(eth_state==U_TX & change_state) begin
+        eth_state<=E_IDLE;
         eth_start<=1;
         uart_start<=1;
         pb_start<=0;
+        pb_reset<=0;
     end else if(eth_state==PLAY_BACK & change_state) begin
         eth_state<=E_IDLE;
         eth_start<=1;
         uart_start<=1;
         pb_start<=1;
+        pb_reset<=0;
+    end else if(eth_state==E_ERR) begin
+        eth_state<=E_IDLE;
     end
     if(sw[0]) begin
         one_shot<=1;
         skip_uart<=1;
     end else begin
         one_shot<=btn[0];
-        skip_uart<=0;
+        skip_uart<=1;
     end
 end
 
@@ -206,9 +266,11 @@ always_comb begin : State_Change
     end else if(eth_state==E_REC) begin
         change_state=~eth_rx_dv & tx_ready;
     end else if(eth_state==U_TX) begin
-        change_state=(uart_addr>=9'd375); // TODO: add correct bound (375?)
+        // change_state=(uart_addr>=9'd375); // TODO: add correct bound (375?)
+        change_state=1;
     end else if(eth_state==PLAY_BACK) begin
-        change_state=(pb_addr>=9'd375);
+        // change_state=(pb_addr>=9'd375);
+        change_state=1;
     end else begin
         change_state=0;
     end
@@ -295,7 +357,8 @@ end
 
 //#######################        BLOCK RAM?        #############################
 
-logic [8:0] addr;
+logic [8:0] wr_addr;
+logic [8:0] rd_addr;
 logic [8:0] eth_addr;
 logic [8:0] uart_addr;
 logic [8:0] pb_addr;
@@ -308,19 +371,19 @@ logic pbbitcounter;
 
 always_comb begin
     if(eth_state==E_REC) begin
-        addr = eth_addr;
+        wr_addr = eth_addr;
     end else if(eth_state==U_TX) begin
-        addr = uart_addr;
+        rd_addr = uart_addr;
     end  else if(eth_state==PLAY_BACK) begin
-        addr = pb_addr;
+        rd_addr = pb_addr;
     end else begin
-        addr = 0;
+        rd_addr = pb_addr;
     end
 end
 
 block_ram #(.INIT("custom.memh")) RAM(
-  .clk(mainclk), .rd_addr(addr), .rd_data(rd_data),
-  .wr_addr(addr), .wr_ena(wr_ena), .wr_data(wr_data)
+  .clk(mainclk), .rd_addr(rd_addr), .rd_data(rd_data),
+  .wr_addr(wr_addr), .wr_ena(wr_ena), .wr_data(wr_data), .rd_addr2(check_addr), .rd_data2(check)
 );
 
 //#########################        OUTPUT        ###############################
@@ -441,20 +504,25 @@ always_comb begin : LED_drivers
             led2_g = 0;
             led2_r = eth_state==U_TX;
 
-            // 3 - Pink for PLAY_BACK
-            led3_b = eth_state==PLAY_BACK;
+            // // 3 - Pink for PLAY_BACK
+            // led3_b = eth_state==PLAY_BACK;
+            // led3_g = 0;
+            // led3_r = eth_state==PLAY_BACK;
+
+            // 3 - Pink for posreset
+            led3_b = posreset;
             led3_g = 0;
-            led3_r = eth_state==PLAY_BACK;
+            led3_r = posreset;
         end else begin
             // 0 - White on reset
             led0_b = rst;
             led0_g = rst;
             led0_r = rst;
 
-            // 1 - Red on MDIO data (low)
-            led1_b = 0;
-            led1_g = 0;
-            led1_r = ~eth_mdio;
+            // 1 - Red on error state
+            led1_b = eth_state==E_ERR;
+            led1_g = eth_state==E_ERR;
+            led1_r = eth_state==E_ERR;
 
             // 2 - Blue on RX clock
             led2_b = eth_rx_clk;
