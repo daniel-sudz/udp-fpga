@@ -28,6 +28,7 @@ int main (int argc, char * argv[]) {
 
     int num_samples = audio_file.getNumSamplesPerChannel();
     int samples_per_packet = 300;
+    int packet_alias = 2;
 
     int sample = 0;
     auto start = std::chrono::system_clock::now();
@@ -42,7 +43,8 @@ int main (int argc, char * argv[]) {
 
         // FPGA does not have a lot of ram so we need to rate limit our send
         if(elapsed_seconds > time_in_sample) {
-            uint32_t buffer[samples_per_packet];
+            uint8_t buffer_aliased[packet_alias + samples_per_packet*4] = {};
+            uint32_t* buffer = (uint32_t*)(buffer_aliased+2);
 
             for(int i=0;i<samples_per_packet;i++) {
                 if(i+sample == num_samples) {
@@ -58,7 +60,7 @@ int main (int argc, char * argv[]) {
             }
 
             // send audio over UDP!
-            packet_watch.send_udp((uint8_t*)buffer, sizeof(buffer), 0, {});
+            packet_watch.send_udp((uint8_t*)buffer_aliased, sizeof(buffer_aliased), 0, {});
             std::cout<<"[INFO]: send UDP packet with sample starting at "<<sample<<"!"<<std::endl;
 
         }
