@@ -136,19 +136,30 @@ always_comb begin
     wch2={pb_read_buffer[19:16], pb_read_buffer[23:20], pb_read_buffer[27:24], pb_read_buffer[31:28], 8'b0};
 end
 
-logic [8:0] pb_endaddr, pb_startaddr, check_addr;
-logic pb_reset, posreset, negreset, shot;
+logic [8:0] pb_endaddr, pb_startaddr, check_addr, final_addr;
+logic pb_reset, posreset, negreset, shot, start_read, trigger_reset;
 logic [31:0] check;
-edge_detector S(.clk(lrclk), .rst(rst), .in(pb_reset), .positive_edge(posreset), .negative_edge(negreset)); //SCLK edge detector relative to mclk
+edge_detector S(.clk(mainclk), .rst(rst), .in(lrclk), .positive_edge(posreset), .negative_edge(negreset)); //SCLK edge detector relative to mclk
 
+always_ff @(posedge mainclk) begin
+    if(rst) begin
+        pb_endaddr<=final_addr;
+        trigger_reset<=0;
+    end else if(start_read) begin
+        pb_endaddr<=final_addr;
+        trigger_reset<=1;
+    end else if(posreset) begin
+        trigger_reset<=0;
+    end
+end
 
 always_ff @(posedge lrclk) begin : I2S2_Transmit
-    if(rst|posreset|~(&(~check))) begin
+    if(rst|trigger_reset) begin
         if(sw[1]) begin
             check_addr<=9'd2;
             pb_startaddr<=9'd13;//9'd13; // 52 bytes header
             pbbitcounter<=0; //0
-            pb_endaddr<=9'd312;//9'd312; // end of message 1500 bytes
+            // pb_endaddr<=final_addr;//9'd312; // end of message 1500 bytes
             // if(&(~check)) begin
             //     pb_read_buffer<=rd_data;
             // end
@@ -157,7 +168,7 @@ always_ff @(posedge lrclk) begin : I2S2_Transmit
         end else begin
             pb_addr<=9'd0; // 50 bytes offset
             pbbitcounter<=0;
-            pb_endaddr<=9'd375; // end of message
+            // pb_endaddr<=9'd375; // end of message
             shot<=1;
         end
     end else begin
@@ -165,7 +176,7 @@ always_ff @(posedge lrclk) begin : I2S2_Transmit
             if(pb_addr<=pb_endaddr & shot) begin
                 if(pbbitcounter) begin
                     pb_addr<=pb_addr+1;
-                    pb_read_buffer<=rd_data;
+                    pb_read_buffer<=rd_data1;
                 end
             end else begin
                 pb_addr<=pb_startaddr;
@@ -304,17 +315,17 @@ input wire eth_tx_clk;      // Derived TX clock
 // Pair flipping (don't ask me why this is or why this isn't we do not ask)
 logic [31:0] eth_wr_data;
 always_comb begin
-    wr_data[31:28]=eth_wr_data[27:24];
-    wr_data[27:24]=eth_wr_data[31:28];
+    wr_data1[31:28]=eth_wr_data[27:24];
+    wr_data1[27:24]=eth_wr_data[31:28];
 
-    wr_data[23:20]=eth_wr_data[19:16];
-    wr_data[19:16]=eth_wr_data[23:20];
+    wr_data1[23:20]=eth_wr_data[19:16];
+    wr_data1[19:16]=eth_wr_data[23:20];
 
-    wr_data[15:12]=eth_wr_data[11:8];
-    wr_data[11:8]=eth_wr_data[15:12];
+    wr_data1[15:12]=eth_wr_data[11:8];
+    wr_data1[11:8]=eth_wr_data[15:12];
 
-    wr_data[7:4]=eth_wr_data[3:0];
-    wr_data[3:0]=eth_wr_data[7:4];
+    wr_data1[7:4]=eth_wr_data[3:0];
+    wr_data1[3:0]=eth_wr_data[7:4];
 end
 
 // Clocks
@@ -345,7 +356,7 @@ always_ff @(posedge eth_rx_clk) begin : Ethernet_Receive
         // write_pointer<=0;
         // eth_addr<='1;
         eth_wr_data<=0;
-        wr_ena<=0;
+        wr_ena1<=0;
         ethbitcounter<=0;
         increment<=0;
     end else begin
@@ -363,10 +374,10 @@ always_ff @(posedge eth_rx_clk) begin : Ethernet_Receive
                 increment<=1;
                 // (should be fixed via eth_addr start value)
                 if(sw[1]) begin
-                    wr_ena<=1;
+                    wr_ena1<=1;
                 end
             end else begin
-                wr_ena<=0; 
+                wr_ena1<=0; 
                 increment<=0;
             end
         end
@@ -375,39 +386,57 @@ end
 
 //#######################        BLOCK RAM?        #############################
 
-logic [8:0] wr_addr;
-logic [8:0] rd_addr;
+logic [8:0] wr_addr1;
+logic [8:0] rd_addr1;
 logic [8:0] eth_addr;
 logic [8:0] uart_addr;
 logic [8:0] pb_addr;
-logic wr_ena;
-logic [31:0] wr_data;
-wire [31:0] rd_data;
+logic wr_ena1;
+logic [31:0] wr_data1;
+wire [31:0] rd_data1;
 logic [2:0] ethbitcounter;
 logic [4:0] uartbitcounter;
 logic pbbitcounter;
 
-always_comb begin
-    if(eth_state==E_REC) begin
-        wr_addr = eth_addr;
-    end else if(eth_state==U_TX) begin
-        rd_addr = uart_addr;
-    end  else if(eth_state==PLAY_BACK) begin
-        rd_addr = pb_addr;
-    end else begin
-        rd_addr = pb_addr;
-    end
-end
+// always_comb begin
+//     if(eth_state==E_REC) begin
+//         wr_addr1 = eth_addr;
+//     end else if(eth_state==U_TX) begin
+//         rd_addr1 = uart_addr;
+//     end  else if(eth_state==PLAY_BACK) begin
+//         rd_addr1 = pb_addr;
+//     end else begin
+//         rd_addr1 = pb_addr;
+//     end
+// end
 
-block_ram #(.INIT("deadbeef.memh")) RAM(
-  .clk(mainclk), .rd_addr(rd_addr), .rd_data(rd_data),
-  .wr_addr(wr_addr), .wr_ena(wr_ena), .wr_data(wr_data), .rd_addr2(check_addr), .rd_data2(check)
+block_ram #(.INIT("deadbeef.memh")) RAM1(
+  .clk(mainclk), .rd_addr(rd_addr1), .rd_data(rd_data1),
+  .wr_addr(wr_addr1), .wr_ena(wr_ena1), .wr_data(wr_data1), .rd_addr2(check_addr), .rd_data2(check)
 );
+
+//#########################        PARSER        ###############################
+
+logic [8:0] wr_addr2;
+logic [8:0] rd_addr2;
+logic wr_ena2, start_parser;
+logic [31:0] wr_data2;
+wire [31:0] rd_data2;
+
 
 block_ram #(.INIT("deadbeef.memh")) RAM2(
-  .clk(mainclk), .rd_addr(rd_addr), .rd_data(rd_data),
-  .wr_addr(wr_addr), .wr_ena(wr_ena), .wr_data(wr_data), .rd_addr2(check_addr), .rd_data2(check)
+  .clk(mainclk), .rd_addr(rd_addr2), .rd_data(rd_data2),
+  .wr_addr(wr_addr2), .wr_ena(wr_ena2), .wr_data(wr_data2), .rd_addr2(check_addr), .rd_data2(check)
 );
+
+udp_main PARSER(.clk(mainclk), .rst(rst|start_parser),
+.rd_data(rd_data1), .rd_addr(rd_addr1),
+.wr_data(wr_data2), .wr_addr(wr_addr2),
+.last_addr(final_addr), .start_read(start_read),
+.wr_ena(wr_ena2), .valid_ip(), .valid_udp()
+);
+
+edge_detector S(.clk(mainclk), .rst(rst), .in(pb_reset), .positive_edge(start_parser), .negative_edge()); //SCLK edge detector relative to mclk
 
 //#########################        OUTPUT        ###############################
 
@@ -466,7 +495,7 @@ always_ff @(posedge uartclk) begin : UART_Transmit // run "make usb"
                 uart_addr<=uart_addr+1;
             end
             if(&uartbitcounter) begin
-                read_buffer<=rd_data;
+                read_buffer<=rd_data1;
             end else begin
                 read_buffer[27:0]<=read_buffer[31:4];
             end
