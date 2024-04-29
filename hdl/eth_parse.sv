@@ -1,6 +1,6 @@
 `timescale 1ns / 1ps
 
-module udp_main(
+module eth_parse(
     input wire clk,
     input wire rst,
     input wire [31:0] rd_data, // read data from ram
@@ -13,6 +13,17 @@ module udp_main(
     output reg valid_ip,
     output reg valid_udp
 );
+
+    // intermediates
+    logic [31:0] eth_packet;
+
+    //packet reconstruct
+    always_comb begin
+    eth_packet[7:0]={rd_data[3:0],rd_data[7:4]};
+    eth_packet[15:8]={rd_data[11:8],rd_data[15:12]};
+    eth_packet[23:16]={rd_data[19:16],rd_data[23:20]};
+    eth_packet[31:24]={rd_data[27:24],rd_data[31:28]};
+    end
 
     // params
     parameter BYTE_WIDTH = 8;
@@ -33,6 +44,8 @@ module udp_main(
     reg [7:0] preamble_buffer[7:0]; // hold 8 bytes
     reg [3:0] byte_count = 0;       // count processed bytes
 
+
+
     always_ff @(posedge clk) begin
         if (rst) begin
             state <= DETECT_PREAMBLE;
@@ -50,16 +63,16 @@ module udp_main(
                     // reset start read signal and last address index
                     start_read <= 0;
                     last_addr <= 0;
-                    
+
                     // update preamble
                     preamble_buffer[7] <= preamble_buffer[6];
                     preamble_buffer[6] <= preamble_buffer[5];
                     preamble_buffer[5] <= preamble_buffer[4];
                     preamble_buffer[4] <= preamble_buffer[3];
-                    preamble_buffer[3] <= preamble_buffer[2];
-                    preamble_buffer[2] <= preamble_buffer[1];
-                    preamble_buffer[1] <= preamble_buffer[0];
-                    preamble_buffer[0] <= rd_data[7:0];  // load in data
+                    preamble_buffer[3] <= eth_packet[7:0];
+                    preamble_buffer[2] <= eth_packet[15:8];
+                    preamble_buffer[1] <= eth_packet[23:16];
+                    preamble_buffer[0] <= eth_packet[31:24];  // load in data
 
                     // check for preamble
                     if (preamble_buffer[7] == 8'h55 && preamble_buffer[6] == 8'h55 &&
@@ -74,10 +87,10 @@ module udp_main(
                 PARSE_ETH: begin
                     // shift in data to header buffer
                     if (byte_count < 14) begin
-                        header_buffer[byte_count] <= rd_data[31:24];
-                        header_buffer[byte_count + 1] <= rd_data[23:16];
-                        header_buffer[byte_count + 2] <= rd_data[15:8];
-                        header_buffer[byte_count + 3] <= rd_data[7:0];
+                        header_buffer[byte_count] <= eth_packet[31:24];
+                        header_buffer[byte_count + 1] <= eth_packet[23:16];
+                        header_buffer[byte_count + 2] <= eth_packet[15:8];
+                        header_buffer[byte_count + 3] <= eth_packet[7:0];
                         byte_count <= byte_count + 4; // increement byte count
                     end
 
@@ -98,10 +111,10 @@ module udp_main(
                 DETECT_OPTIONS: begin
                     // Process four bytes from the word read from RAM
                     if (byte_count < 15) begin
-                        header_buffer[byte_count] <= rd_data[31:24];
-                        header_buffer[byte_count + 1] <= rd_data[23:16];
-                        header_buffer[byte_count + 2] <= rd_data[15:8];
-                        header_buffer[byte_count + 3] <= rd_data[7:0];
+                        header_buffer[byte_count] <= eth_packet[31:24];
+                        header_buffer[byte_count + 1] <= eth_packet[23:16];
+                        header_buffer[byte_count + 2] <= eth_packet[15:8];
+                        header_buffer[byte_count + 3] <= eth_packet[7:0];
                         byte_count <= byte_count + 4; // Increment byte_count by 4
                     end
 
@@ -119,10 +132,10 @@ module udp_main(
                 end
                 PARSE_IP: begin
                     if (byte_count < 15) begin
-                        header_buffer[byte_count] <= rd_data[31:24];
-                        header_buffer[byte_count + 1] <= rd_data[23:16];
-                        header_buffer[byte_count + 2] <= rd_data[15:8];
-                        header_buffer[byte_count + 3] <= rd_data[7:0];
+                        header_buffer[byte_count] <= eth_packet[31:24];
+                        header_buffer[byte_count + 1] <= eth_packet[23:16];
+                        header_buffer[byte_count + 2] <= eth_packet[15:8];
+                        header_buffer[byte_count + 3] <= eth_packet[7:0];
                         byte_count <= byte_count + 4; // continue reading data
                     end
 
@@ -141,7 +154,7 @@ module udp_main(
                 SEND_PAYLOAD: begin
                     // start streaming output
                     wr_ena <= 1;
-                    wr_data <= rd_data; // write to ram
+                    wr_data <= eth_packet; // write to ram
                     wr_addr <= wr_addr + 1;
 
                     // shift data through
@@ -149,10 +162,10 @@ module udp_main(
                     preamble_buffer[6] <= preamble_buffer[5];
                     preamble_buffer[5] <= preamble_buffer[4];
                     preamble_buffer[4] <= preamble_buffer[3];
-                    preamble_buffer[3] <= preamble_buffer[2];
-                    preamble_buffer[2] <= preamble_buffer[1];
-                    preamble_buffer[1] <= preamble_buffer[0];
-                    preamble_buffer[0] <= rd_data[7:0];  // update buffer
+                    preamble_buffer[3] <= eth_packet[7:0];
+                    preamble_buffer[2] <= eth_packet[15:8];
+                    preamble_buffer[1] <= eth_packet[23:16];
+                    preamble_buffer[0] <= eth_packet[31:24];  // load in data
 
                     if (preamble_buffer[7] == 8'h55 && preamble_buffer[6] == 8'h55 &&
                         preamble_buffer[5] == 8'h55 && preamble_buffer[4] == 8'h55 &&
