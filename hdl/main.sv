@@ -399,7 +399,12 @@ always_comb begin
     end
 end
 
-block_ram #(.INIT("custom.memh")) RAM(
+block_ram #(.INIT("deadbeef.memh")) RAM(
+  .clk(mainclk), .rd_addr(rd_addr), .rd_data(rd_data),
+  .wr_addr(wr_addr), .wr_ena(wr_ena), .wr_data(wr_data), .rd_addr2(check_addr), .rd_data2(check)
+);
+
+block_ram #(.INIT("deadbeef.memh")) RAM2(
   .clk(mainclk), .rd_addr(rd_addr), .rd_data(rd_data),
   .wr_addr(wr_addr), .wr_ena(wr_ena), .wr_data(wr_data), .rd_addr2(check_addr), .rd_data2(check)
 );
