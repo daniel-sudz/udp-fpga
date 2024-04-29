@@ -87,11 +87,11 @@ module eth_parse(
                 PARSE_ETH: begin
                     // shift in data to header buffer
                     if (byte_count < 14) begin
-                        header_buffer[byte_count] <= eth_packet[31:24];
-                        header_buffer[byte_count + 1] <= eth_packet[23:16];
-                        header_buffer[byte_count + 2] <= eth_packet[15:8];
-                        header_buffer[byte_count + 3] <= eth_packet[7:0];
-                        byte_count <= byte_count + 4; // increement byte count
+                        header_buffer[byte_count] <= eth_packet[7:0];
+                        header_buffer[byte_count + 1] <= eth_packet[15:8];
+                        header_buffer[byte_count + 2] <= eth_packet[23:16];
+                        header_buffer[byte_count + 3] <= eth_packet[31:24];
+                        byte_count <= byte_count + 4; // increment byte count
                     end
 
                     // check if eth type should have been loaded in or not
@@ -111,10 +111,10 @@ module eth_parse(
                 DETECT_OPTIONS: begin
                     // Process four bytes from the word read from RAM
                     if (byte_count < 15) begin
-                        header_buffer[byte_count] <= eth_packet[31:24];
-                        header_buffer[byte_count + 1] <= eth_packet[23:16];
-                        header_buffer[byte_count + 2] <= eth_packet[15:8];
-                        header_buffer[byte_count + 3] <= eth_packet[7:0];
+                        header_buffer[byte_count] <= eth_packet[7:0];
+                        header_buffer[byte_count + 1] <= eth_packet[15:8];
+                        header_buffer[byte_count + 2] <= eth_packet[23:16];
+                        header_buffer[byte_count + 3] <= eth_packet[31:24];
                         byte_count <= byte_count + 4; // Increment byte_count by 4
                     end
 
