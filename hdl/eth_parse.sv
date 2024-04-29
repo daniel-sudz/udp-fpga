@@ -7,6 +7,8 @@ module udp_main(
     output reg [9:0] rd_addr, // read address from ram
     output reg [31:0] wr_data, // write data to ram
     output reg [9:0] wr_addr, // write address to ram
+    output reg [9:0] last_addr,
+    output reg start_read, 
     output reg wr_ena, // write enable ram
     output reg valid_ip,
     output reg valid_udp
@@ -40,9 +42,15 @@ module udp_main(
             valid_udp <= 0;
             wr_addr <= 0;
             wr_ena <= 0;
+            start_read <= 0;
+            last_addr <= 0;
         end else begin
             case (state)
                 DETECT_PREAMBLE: begin
+                    // reset start read signal and last address index
+                    start_read <= 0;
+                    last_addr <= 0;
+                    
                     // update preamble
                     preamble_buffer[7] <= preamble_buffer[6];
                     preamble_buffer[6] <= preamble_buffer[5];
@@ -152,6 +160,8 @@ module udp_main(
                         preamble_buffer[1] == 8'h55 && preamble_buffer[0] == 8'hD5) begin
                         state <= DETECT_PREAMBLE; // jump back to start
                         wr_ena <= 0; // stop writing to ram
+                        last_addr <= rd_addr;
+                        start_read <= 1;
                     end
                     rd_addr <= rd_addr + 1; 
                 end
