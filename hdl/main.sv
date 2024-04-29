@@ -146,7 +146,7 @@ always_ff @(posedge mainclk) begin
         pb_endaddr<=final_addr;
         trigger_reset<=0;
     end else if(start_read) begin
-        pb_endaddr<=9'd299;
+        pb_endaddr<=final_addr;
         trigger_reset<=1;
     end else if(posreset) begin
         trigger_reset<=0;
@@ -164,6 +164,7 @@ always_ff @(posedge lrclk) begin : I2S2_Transmit
             //     pb_read_buffer<=rd_data;
             // end
             pb_addr<=9'd0;
+            pb_read_buffer<=original;
             shot<=1;
             // pb_endaddr<=9'd299;
         end else begin
@@ -429,13 +430,14 @@ logic [8:0] rd_addr2;
 logic wr_ena2, start_parser;
 logic [31:0] wr_data2;
 wire [31:0] rd_data2;
+logic [31:0] original;
 
 always_comb rd_addr2=pb_addr;
 
 block_ram #(.INIT("deadbeef.memh")) RAM2(
   .clk(mainclk), .rd_addr(rd_addr2), .rd_data(rd_data2),
   .wr_addr(wr_addr2), .wr_ena(wr_ena2), .wr_data(wr_data2),
-  .rd_addr2(), .rd_data2()
+  .rd_addr2('0), .rd_data2(original)
 );
 
 eth_parse PARSER(.clk(mainclk), .rst(rst),

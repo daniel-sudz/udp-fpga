@@ -5,7 +5,7 @@
 module block_ram(clk, rd_addr, rd_data, wr_addr, wr_ena, wr_data, rd_addr2, rd_data2);
 
 parameter W = 32; // number of rows of the memory
-parameter L = 375; // Length of the memory row
+parameter L = 450; // Length of the memory row
 parameter INIT = "zeros.memh";
 
 input wire clk;

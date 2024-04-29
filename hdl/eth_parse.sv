@@ -187,8 +187,9 @@ module eth_parse(
                         wr_ena <= 1;
                         state <= SEND_PAYLOAD;
                         rd_addr <= rd_addr + 1; // read next word from ram
+                    end else begin
+                        rd_addr <= rd_addr + 1; // read next word from ram
                     end
-                    rd_addr <= rd_addr + 1; // read next word from ram
                 end
 
                 SEND_PAYLOAD: begin
