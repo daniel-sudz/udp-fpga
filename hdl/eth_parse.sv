@@ -110,12 +110,9 @@ module eth_parse(
                         // check eth type
                         if (header_buffer[12] == 8'h08 & header_buffer[13] == 8'h00) begin
                             valid_ip <= 1;
-                            state <= SEND_PAYLOAD; // next state
+                            state <= DETECT_OPTIONS; // next state
                             byte_count <= 0; // reset counter so i can reuse the header
-                            //SKIP
-                            valid_udp <= 1;
-                            rd_addr <= 9'd13;
-                            wr_ena <= 1;
+                            rd_addr <= rd_addr - 1;
                         end else begin
                             state <= IDLE; // go back and look for new frame
                         end
@@ -137,34 +134,40 @@ module eth_parse(
                     // Check if we've processed the IHL from the first byte
                     if (byte_count >= 1) begin
                         // Check IHL (first 4 bits of the first byte)
-                        if ((header_buffer[0] & 8'h0F) > 5) begin
+                        if ((header_buffer[2] & 8'h0F) > 5) begin
                             state <= IDLE; // IP header has options, skip packet
                         end else begin
                             state <= PARSE_IP; // Move to IP parsing
+                            byte_count <= 0; // reset counter so i can reuse the header
                         end
+                    end else begin
+                        rd_addr <= rd_addr + 1; // Prepare to read the next word from RAM
                     end
-
-                    rd_addr <= rd_addr + 1; // Prepare to read the next word from RAM
                 end
                 PARSE_IP: begin
                     if (byte_count < 15) begin
-                        header_buffer[byte_count] <= eth_packet[31:24];
-                        header_buffer[byte_count + 1] <= eth_packet[23:16];
-                        header_buffer[byte_count + 2] <= eth_packet[15:8];
-                        header_buffer[byte_count + 3] <= eth_packet[7:0];
-                        byte_count <= byte_count + 4; // continue reading data
+                        header_buffer[byte_count[3:0]] <= eth_packet[7:0];
+                        header_buffer[byte_count[3:0] + 1] <= eth_packet[15:8];
+                        header_buffer[byte_count[3:0] + 2] <= eth_packet[23:16];
+                        header_buffer[byte_count[3:0] + 3] <= eth_packet[31:24];
+                        byte_count <= byte_count[3:0] + 4; // continue reading data
                     end
 
-                    if (byte_count >= 10) begin
-                        if (header_buffer[9] == 8'h11) begin // check for udp
+                    if (byte_count >= 8) begin
+                        if (header_buffer[7] == 8'h11) begin // check for udp
                             valid_udp <= 1;
-                            state <= SEND_PAYLOAD; // begin sending payload
+                            // state <= SEND_PAYLOAD; // begin sending payload
+                            //SKIP
+                            valid_udp <= 1;
+                            rd_addr <= 9'd13;
+                            wr_ena <= 1;
+                            state <= SEND_PAYLOAD;
                         end else begin
                             state <= IDLE; // Not UDP, detect new preamble
                         end
+                    end else begin
+                        rd_addr <= rd_addr + 1; // read next word from ram
                     end
-
-                    rd_addr <= rd_addr + 1; // read next word from ram
                 end
 
                 SEND_PAYLOAD: begin
