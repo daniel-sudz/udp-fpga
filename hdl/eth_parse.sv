@@ -17,6 +17,7 @@ module eth_parse(
 
     // intermediates
     logic [31:0] eth_packet;
+    logic [15:0] length;
 
     //packet reconstruct
     always_comb begin
@@ -37,12 +38,13 @@ module eth_parse(
         DETECT_OPTIONS = 2,
         PARSE_IP = 3,
         SEND_PAYLOAD = 4,
-        IDLE = 5
+        IDLE = 5,
+        PARSE_LENGTH = 6
     } state_t;
 
     state_t state = IDLE; // set base state
 
-    reg [7:0] header_buffer[15:0]; // store header
+    reg [7:0] header_buffer[20:0]; // store header
     reg [7:0] preamble_buffer[7:0]; // hold 8 bytes
     reg [4:0] byte_count = 0;       // count processed bytes
 
@@ -98,11 +100,11 @@ module eth_parse(
                 PARSE_ETH: begin
                     // shift in data to header buffer
                     if (byte_count < 14) begin
-                        header_buffer[byte_count[3:0]] <= eth_packet[7:0];
-                        header_buffer[byte_count[3:0] + 1] <= eth_packet[15:8];
-                        header_buffer[byte_count[3:0] + 2] <= eth_packet[23:16];
-                        header_buffer[byte_count[3:0] + 3] <= eth_packet[31:24];
-                        byte_count <= byte_count[3:0] + 4; // increment byte count
+                        header_buffer[byte_count] <= eth_packet[7:0];
+                        header_buffer[byte_count + 1] <= eth_packet[15:8];
+                        header_buffer[byte_count + 2] <= eth_packet[23:16];
+                        header_buffer[byte_count + 3] <= eth_packet[31:24];
+                        byte_count <= byte_count + 4; // increment byte count
                     end
 
                     // check if eth type should have been loaded in or not
@@ -124,11 +126,11 @@ module eth_parse(
                 DETECT_OPTIONS: begin
                     // Process four bytes from the word read from RAM
                     if (byte_count < 15) begin
-                        header_buffer[byte_count[3:0]] <= eth_packet[7:0];
-                        header_buffer[byte_count[3:0] + 1] <= eth_packet[15:8];
-                        header_buffer[byte_count[3:0] + 2] <= eth_packet[23:16];
-                        header_buffer[byte_count[3:0] + 3] <= eth_packet[31:24];
-                        byte_count <= byte_count[3:0] + 4; // Increment byte_count by 4
+                        header_buffer[byte_count] <= eth_packet[7:0];
+                        header_buffer[byte_count + 1] <= eth_packet[15:8];
+                        header_buffer[byte_count + 2] <= eth_packet[23:16];
+                        header_buffer[byte_count + 3] <= eth_packet[31:24];
+                        byte_count <= byte_count + 4; // Increment byte_count by 4
                     end
 
                     // Check if we've processed the IHL from the first byte
@@ -145,29 +147,48 @@ module eth_parse(
                     end
                 end
                 PARSE_IP: begin
-                    if (byte_count < 15) begin
-                        header_buffer[byte_count[3:0]] <= eth_packet[7:0];
-                        header_buffer[byte_count[3:0] + 1] <= eth_packet[15:8];
-                        header_buffer[byte_count[3:0] + 2] <= eth_packet[23:16];
-                        header_buffer[byte_count[3:0] + 3] <= eth_packet[31:24];
-                        byte_count <= byte_count[3:0] + 4; // continue reading data
+                    if (byte_count < 8) begin
+                        header_buffer[byte_count] <= eth_packet[7:0];
+                        header_buffer[byte_count + 1] <= eth_packet[15:8];
+                        header_buffer[byte_count + 2] <= eth_packet[23:16];
+                        header_buffer[byte_count + 3] <= eth_packet[31:24];
+                        byte_count <= byte_count + 4; // continue reading data
                     end
 
                     if (byte_count >= 8) begin
                         if (header_buffer[7] == 8'h11) begin // check for udp
                             valid_udp <= 1;
-                            // state <= SEND_PAYLOAD; // begin sending payload
-                            //SKIP
-                            valid_udp <= 1;
-                            rd_addr <= 9'd13;
-                            wr_ena <= 1;
-                            state <= SEND_PAYLOAD;
+                            byte_count <= 0; // reset counter so i can reuse the header
+                            state <= PARSE_LENGTH; // begin sending payload
                         end else begin
                             state <= IDLE; // Not UDP, detect new preamble
                         end
                     end else begin
                         rd_addr <= rd_addr + 1; // read next word from ram
                     end
+                end
+
+                PARSE_LENGTH: begin
+                    if (byte_count < 19) begin
+                        header_buffer[byte_count] <= eth_packet[7:0];
+                        header_buffer[byte_count + 1] <= eth_packet[15:8];
+                        header_buffer[byte_count + 2] <= eth_packet[23:16];
+                        header_buffer[byte_count + 3] <= eth_packet[31:24];
+                        byte_count <= byte_count + 4; // continue reading data
+                    end
+
+                    if (byte_count >= 19) begin
+                        byte_count <= 0; // reset counter so i can reuse the header
+                        length={header_buffer[18],header_buffer[19]};
+                        // state <= SEND_PAYLOAD; // begin sending payload
+                        // //SKIP
+                        // valid_udp <= 1;
+                        // rd_addr <= 9'd13;
+                        wr_ena <= 1;
+                        state <= SEND_PAYLOAD;
+                        rd_addr <= rd_addr + 1; // read next word from ram
+                    end
+                    rd_addr <= rd_addr + 1; // read next word from ram
                 end
 
                 SEND_PAYLOAD: begin
@@ -178,7 +199,8 @@ module eth_parse(
 
                     // shift data through
 
-                    if (wr_addr>=9'd299) begin
+                    //if (wr_addr>=9'd299) begin
+                    if (wr_addr>=(length[8:0]-9'd9)) begin
                         state <= IDLE; // jump back to start
                         wr_ena <= 0; // stop writing to ram
                         last_addr <= wr_addr;
