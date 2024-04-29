@@ -143,10 +143,10 @@ edge_detector S(.clk(mainclk), .rst(rst), .in(lrclk), .positive_edge(posreset), 
 
 always_ff @(posedge mainclk) begin
     if(rst) begin
-        pb_endaddr<=final_addr;
+        // pb_endaddr<=final_addr;
         trigger_reset<=0;
     end else if(start_read) begin
-        pb_endaddr<=final_addr;
+        // pb_endaddr<=9'd299;
         trigger_reset<=1;
     end else if(posreset) begin
         trigger_reset<=0;
@@ -157,34 +157,40 @@ always_ff @(posedge lrclk) begin : I2S2_Transmit
     if(rst|trigger_reset) begin
         if(sw[1]) begin
             check_addr<=9'd2;
-            pb_startaddr<=9'd13;//9'd13; // 52 bytes header
+            // pb_startaddr<=9'd0;//9'd13; // 52 bytes header
             pbbitcounter<=0; //0
             // pb_endaddr<=final_addr;//9'd312; // end of message 1500 bytes
             // if(&(~check)) begin
             //     pb_read_buffer<=rd_data;
             // end
-            pb_addr<=pb_startaddr;
+            pb_addr<=9'd0;
             shot<=1;
+            pb_endaddr<=9'd299;
         end else begin
-            pb_addr<=9'd0; // 50 bytes offset
+            pb_addr<=9'd13; // 50 bytes offset
             pbbitcounter<=0;
             // pb_endaddr<=9'd375; // end of message
             shot<=1;
+            pb_endaddr<=9'd312;
         end
     end else begin
         // if(eth_state==PLAY_BACK) begin
             if(pb_addr<=pb_endaddr & shot) begin
                 if(pbbitcounter) begin
                     pb_addr<=pb_addr+1;
-                    pb_read_buffer<=rd_data1;
+                    if(sw[1]) begin
+                        pb_read_buffer<=rd_data2;
+                    end else begin
+                        pb_read_buffer<=check;
+                    end
                 end
             end else begin
                 pb_addr<=pb_startaddr;
                 shot<=0;
             end
-            if(~sw[1] & pb_addr>pb_endaddr) begin
-                pb_addr<=0;
-            end
+            // if(~sw[1] & pb_addr>pb_endaddr) begin
+            //     pb_addr<=0;
+            // end
             pbbitcounter<=~pbbitcounter;
         // end
     end
@@ -412,7 +418,8 @@ logic pbbitcounter;
 
 block_ram #(.INIT("deadbeef.memh")) RAM1(
   .clk(mainclk), .rd_addr(rd_addr1), .rd_data(rd_data1),
-  .wr_addr(wr_addr1), .wr_ena(wr_ena1), .wr_data(wr_data1), .rd_addr2(check_addr), .rd_data2(check)
+  .wr_addr(eth_addr), .wr_ena(wr_ena1), .wr_data(wr_data1),
+  .rd_addr2(pb_addr), .rd_data2(check)
 );
 
 //#########################        PARSER        ###############################
@@ -423,20 +430,24 @@ logic wr_ena2, start_parser;
 logic [31:0] wr_data2;
 wire [31:0] rd_data2;
 
+always_comb rd_addr2=pb_addr;
 
 block_ram #(.INIT("deadbeef.memh")) RAM2(
   .clk(mainclk), .rd_addr(rd_addr2), .rd_data(rd_data2),
-  .wr_addr(wr_addr2), .wr_ena(wr_ena2), .wr_data(wr_data2), .rd_addr2(check_addr), .rd_data2(check)
+  .wr_addr(wr_addr2), .wr_ena(wr_ena2), .wr_data(wr_data2),
+  .rd_addr2(), .rd_data2()
 );
 
-udp_main PARSER(.clk(mainclk), .rst(rst|start_parser),
+eth_parse PARSER(.clk(mainclk), .rst(rst),
 .rd_data(rd_data1), .rd_addr(rd_addr1),
 .wr_data(wr_data2), .wr_addr(wr_addr2),
 .last_addr(final_addr), .start_read(start_read),
-.wr_ena(wr_ena2), .valid_ip(), .valid_udp()
+.wr_ena(wr_ena2), .valid_ip(valid_ip), .valid_udp(valid_udp), .newpacket(start_parser)
 );
 
-edge_detector S(.clk(mainclk), .rst(rst), .in(pb_reset), .positive_edge(start_parser), .negative_edge()); //SCLK edge detector relative to mclk
+logic valid_udp, valid_ip;
+
+edge_detector S2(.clk(mainclk), .rst(rst), .in(pb_reset), .positive_edge(start_parser), .negative_edge()); //SCLK edge detector relative to mclk
 
 //#########################        OUTPUT        ###############################
 
@@ -507,6 +518,46 @@ end
 
 //##########################        LEDS        ################################
 
+logic err1, err2, err3;
+logic [15:0] counter1, counter2, counter3;
+
+always_ff @(posedge mainclk) begin
+    if(rst) begin
+        err1<=0;
+        err2<=0;
+        err3<=0;
+    end else begin
+        if(valid_ip) begin
+            err1<=1;
+            counter1<=0;
+        end
+        if(valid_udp) begin
+            err2<=1;
+            counter2<=0;
+        end
+        if(trigger_reset) begin
+            err3<=1;
+            counter3<=0;
+        end 
+        if(err1 & counter1[15]) begin
+            err1<=0;
+        end else begin
+            counter1<=counter1+1;
+        end
+        if(err2 & counter2[15]) begin
+            err2<=0;
+        end else begin
+            counter2<=counter2+1;
+        end
+        if(err3 & counter3[15]) begin
+            err3<=0;
+        end else begin
+            counter3<=counter3+1;
+        end
+    end
+end
+
+
 output logic led0_b,led0_g,led0_r;
 output logic led1_b,led1_g,led1_r;
 output logic led2_b,led2_g,led2_r;
@@ -553,8 +604,8 @@ always_comb begin : LED_drivers
 
             // 2 - Red for U_TX
             led2_b = 0;
-            led2_g = 0;
-            led2_r = eth_state==U_TX;
+            led2_g = err1;
+            led2_r = err2;
 
             // // 3 - Pink for PLAY_BACK
             // led3_b = eth_state==PLAY_BACK;
@@ -562,9 +613,9 @@ always_comb begin : LED_drivers
             // led3_r = eth_state==PLAY_BACK;
 
             // 3 - Pink for posreset
-            led3_b = posreset;
-            led3_g = 0;
-            led3_r = posreset;
+            led3_b = err3;
+            led3_g = ~trigger_reset;
+            led3_r = err3;
         end else begin
             // 0 - White on reset
             led0_b = rst;
