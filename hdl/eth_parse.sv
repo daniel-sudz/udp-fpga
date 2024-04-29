@@ -14,6 +14,17 @@ module udp_main(
     output reg valid_udp
 );
 
+    // intermediates
+    logic [31:0] eth_packet;
+
+    //packet reconstruct
+    always_comb begin
+    eth_packet[7:0]={rd_data[3:0],rd_data[7:4]};
+    eth_packet[15:8]={rd_data[11:8],rd_data[15:12]};
+    eth_packet[23:16]={rd_data[19:16],rd_data[23:20]};
+    eth_packet[31:24]={rd_data[27:24],rd_data[31:28]};
+    end
+
     // params
     parameter BYTE_WIDTH = 8;
     parameter WORD_BYTES = 4;
@@ -33,6 +44,8 @@ module udp_main(
     reg [7:0] preamble_buffer[7:0]; // hold 8 bytes
     reg [3:0] byte_count = 0;       // count processed bytes
 
+
+
     always_ff @(posedge clk) begin
         if (rst) begin
             state <= DETECT_PREAMBLE;
@@ -50,7 +63,7 @@ module udp_main(
                     // reset start read signal and last address index
                     start_read <= 0;
                     last_addr <= 0;
-                    
+
                     // update preamble
                     preamble_buffer[7] <= preamble_buffer[6];
                     preamble_buffer[6] <= preamble_buffer[5];
@@ -59,7 +72,7 @@ module udp_main(
                     preamble_buffer[3] <= preamble_buffer[2];
                     preamble_buffer[2] <= preamble_buffer[1];
                     preamble_buffer[1] <= preamble_buffer[0];
-                    preamble_buffer[0] <= rd_data[7:0];  // load in data
+                    preamble_buffer[0] <= eth_packet[7:0];  // load in data
 
                     // check for preamble
                     if (preamble_buffer[7] == 8'h55 && preamble_buffer[6] == 8'h55 &&
