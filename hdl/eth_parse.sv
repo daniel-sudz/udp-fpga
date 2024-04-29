@@ -194,6 +194,7 @@ module eth_parse(
                         state <= SEND_PAYLOAD;
                         // rd_addr <= rd_addr; // read next word from ram
                         start_addr <= rd_addr;
+                        wr_data <= rd_data; // write to ram
                     end else begin
                         rd_addr <= rd_addr + 1; // read next word from ram
                     end
