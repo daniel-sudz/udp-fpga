@@ -40,11 +40,11 @@ module eth_parse(
         IDLE = 5
     } state_t;
 
-    state_t state = DETECT_PREAMBLE; // set base state
+    state_t state = IDLE; // set base state
 
-    reg [7:0] header_buffer[13:0]; // store header
+    reg [7:0] header_buffer[15:0]; // store header
     reg [7:0] preamble_buffer[7:0]; // hold 8 bytes
-    reg [3:0] byte_count = 0;       // count processed bytes
+    reg [4:0] byte_count = 0;       // count processed bytes
 
 
 
@@ -63,9 +63,8 @@ module eth_parse(
             case (state)
                 IDLE: begin
                     if(newpacket) begin
-                        state <= SEND_PAYLOAD;
-                        valid_udp <= 1;
-                        rd_addr <= 9'd13;
+                        state <= DETECT_PREAMBLE;
+                        rd_addr <= 9'd0;
                         wr_addr <= 0;
                         last_addr <= 0;
                     end
@@ -90,42 +89,49 @@ module eth_parse(
                         preamble_buffer[3] == 8'h55 && preamble_buffer[2] == 8'h55 &&
                         preamble_buffer[1] == 8'h55 && preamble_buffer[0] == 8'hD5) begin
                         state <= PARSE_ETH; // check for preamble
-                    end
+                        byte_count <= 0;
+                        end else begin
+                            rd_addr <= rd_addr + 1; // Increment read address only in this state
+                        end
                     
-                    rd_addr <= rd_addr + 1; // Increment read address only in this state
                 end
                 PARSE_ETH: begin
                     // shift in data to header buffer
                     if (byte_count < 14) begin
-                        header_buffer[byte_count] <= eth_packet[7:0];
-                        header_buffer[byte_count + 1] <= eth_packet[15:8];
-                        header_buffer[byte_count + 2] <= eth_packet[23:16];
-                        header_buffer[byte_count + 3] <= eth_packet[31:24];
-                        byte_count <= byte_count + 4; // increment byte count
+                        header_buffer[byte_count[3:0]] <= eth_packet[7:0];
+                        header_buffer[byte_count[3:0] + 1] <= eth_packet[15:8];
+                        header_buffer[byte_count[3:0] + 2] <= eth_packet[23:16];
+                        header_buffer[byte_count[3:0] + 3] <= eth_packet[31:24];
+                        byte_count <= byte_count[3:0] + 4; // increment byte count
                     end
 
                     // check if eth type should have been loaded in or not
                     if (byte_count >= 14) begin
                         // check eth type
-                        if (header_buffer[12] == 8'h08 && header_buffer[13] == 8'h00) begin
+                        if (header_buffer[12] == 8'h08 & header_buffer[13] == 8'h00) begin
                             valid_ip <= 1;
-                            state <= DETECT_OPTIONS; // next state
+                            state <= SEND_PAYLOAD; // next state
                             byte_count <= 0; // reset counter so i can reuse the header
+                            //SKIP
+                            valid_udp <= 1;
+                            rd_addr <= 9'd13;
+                            wr_ena <= 1;
                         end else begin
                             state <= IDLE; // go back and look for new frame
                         end
+                    end else begin
+                        rd_addr <= rd_addr + 1; // read next word from ram
                     end
-                    rd_addr <= rd_addr + 1; // read next word from ram
                 end
 
                 DETECT_OPTIONS: begin
                     // Process four bytes from the word read from RAM
                     if (byte_count < 15) begin
-                        header_buffer[byte_count] <= eth_packet[7:0];
-                        header_buffer[byte_count + 1] <= eth_packet[15:8];
-                        header_buffer[byte_count + 2] <= eth_packet[23:16];
-                        header_buffer[byte_count + 3] <= eth_packet[31:24];
-                        byte_count <= byte_count + 4; // Increment byte_count by 4
+                        header_buffer[byte_count[3:0]] <= eth_packet[7:0];
+                        header_buffer[byte_count[3:0] + 1] <= eth_packet[15:8];
+                        header_buffer[byte_count[3:0] + 2] <= eth_packet[23:16];
+                        header_buffer[byte_count[3:0] + 3] <= eth_packet[31:24];
+                        byte_count <= byte_count[3:0] + 4; // Increment byte_count by 4
                     end
 
                     // Check if we've processed the IHL from the first byte
@@ -163,16 +169,16 @@ module eth_parse(
 
                 SEND_PAYLOAD: begin
                     // start streaming output
-                    wr_ena <= 1;
+                    // wr_ena <= 1;
                     wr_data <= rd_data; // write to ram
                     wr_addr <= wr_addr + 1;
 
                     // shift data through
 
-                    if (wr_addr>=9'd313) begin
+                    if (wr_addr>=9'd299) begin
                         state <= IDLE; // jump back to start
                         wr_ena <= 0; // stop writing to ram
-                        last_addr <= rd_addr;
+                        last_addr <= wr_addr;
                         start_read <= 1;
                     end
                     rd_addr <= rd_addr + 1; 

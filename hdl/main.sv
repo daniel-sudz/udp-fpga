@@ -143,10 +143,10 @@ edge_detector S(.clk(mainclk), .rst(rst), .in(lrclk), .positive_edge(posreset), 
 
 always_ff @(posedge mainclk) begin
     if(rst) begin
-        // pb_endaddr<=final_addr;
+        pb_endaddr<=final_addr;
         trigger_reset<=0;
     end else if(start_read) begin
-        // pb_endaddr<=9'd299;
+        pb_endaddr<=9'd299;
         trigger_reset<=1;
     end else if(posreset) begin
         trigger_reset<=0;
@@ -165,13 +165,13 @@ always_ff @(posedge lrclk) begin : I2S2_Transmit
             // end
             pb_addr<=9'd0;
             shot<=1;
-            pb_endaddr<=9'd299;
+            // pb_endaddr<=9'd299;
         end else begin
             pb_addr<=9'd13; // 50 bytes offset
             pbbitcounter<=0;
             // pb_endaddr<=9'd375; // end of message
             shot<=1;
-            pb_endaddr<=9'd312;
+            // pb_endaddr<=9'd312;
         end
     end else begin
         // if(eth_state==PLAY_BACK) begin
