@@ -12,7 +12,9 @@ module eth_parse(
     output reg wr_ena, // write enable ram
     output reg valid_ip,
     output reg valid_udp,
-    input wire newpacket
+    input wire newpacket,
+    output reg [8:0] start_addr, 
+    input wire [3:0] sw
 );
 
     // intermediates
@@ -179,14 +181,20 @@ module eth_parse(
 
                     if (byte_count >= 19) begin
                         byte_count <= 0; // reset counter so i can reuse the header
-                        length={header_buffer[18],header_buffer[19]};
+                        if(sw[0]) begin
+                            length<={header_buffer[14],header_buffer[15]};
+                        end else begin
+                            length<={5'd0,11'd1232};
+                        end
                         // state <= SEND_PAYLOAD; // begin sending payload
                         // //SKIP
                         // valid_udp <= 1;
                         // rd_addr <= 9'd13;
                         wr_ena <= 1;
                         state <= SEND_PAYLOAD;
-                        rd_addr <= rd_addr + 1; // read next word from ram
+                        // rd_addr <= rd_addr; // read next word from ram
+                        start_addr <= rd_addr;
+                        wr_data <= rd_data; // write to ram
                     end else begin
                         rd_addr <= rd_addr + 1; // read next word from ram
                     end
@@ -201,7 +209,7 @@ module eth_parse(
                     // shift data through
 
                     //if (wr_addr>=9'd299) begin
-                    if (wr_addr>=(length[8:0]-9'd9)) begin
+                    if (wr_addr>=(length[10:2]-9'd3)) begin
                         state <= IDLE; // jump back to start
                         wr_ena <= 0; // stop writing to ram
                         last_addr <= wr_addr;

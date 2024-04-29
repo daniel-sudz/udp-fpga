@@ -146,7 +146,11 @@ always_ff @(posedge mainclk) begin
         pb_endaddr<=final_addr;
         trigger_reset<=0;
     end else if(start_read) begin
-        pb_endaddr<=final_addr;
+        if(sw[0]) begin
+            pb_endaddr<=final_addr;
+        end else begin
+            pb_endaddr<=9'd299;
+        end
         trigger_reset<=1;
     end else if(posreset) begin
         trigger_reset<=0;
@@ -271,13 +275,13 @@ always_ff @(posedge mainclk) begin : Finite_State_Machine
     end else if(eth_state==E_ERR) begin
         eth_state<=E_IDLE;
     end
-    if(sw[0]) begin
+    // if(sw[0]) begin
         one_shot<=1;
         skip_uart<=1;
-    end else begin
-        one_shot<=btn[0];
-        skip_uart<=1;
-    end
+    // end else begin
+    //     one_shot<=btn[0];
+    //     skip_uart<=1;
+    // end
 end
 
 always_comb begin : State_Change
@@ -444,9 +448,10 @@ eth_parse PARSER(.clk(mainclk), .rst(rst),
 .rd_data(rd_data1), .rd_addr(rd_addr1),
 .wr_data(wr_data2), .wr_addr(wr_addr2),
 .last_addr(final_addr), .start_read(start_read),
-.wr_ena(wr_ena2), .valid_ip(valid_ip), .valid_udp(valid_udp), .newpacket(start_parser)
+.wr_ena(wr_ena2), .valid_ip(valid_ip), .valid_udp(valid_udp), .newpacket(start_parser), .sw(sw), .start_addr(start_address)
 );
 
+logic [8:0] start_address;
 logic valid_udp, valid_ip;
 
 edge_detector S2(.clk(mainclk), .rst(rst), .in(pb_reset), .positive_edge(start_parser), .negative_edge()); //SCLK edge detector relative to mclk
@@ -461,14 +466,16 @@ uart_driver UART(.clk(uartclk), .rst(rst), // reset with rest of system
 
 always_ff @(posedge uartclk) begin : UART_Transmit // run "make usb"
     // TODO: nasty bug that occurs when running too fast causes whole thing to freeze
-    if(rst|uart_start) begin
+    if(rst) begin
+        //|uart_start
         uart_addr<=0;
         uartbitcounter<=5'd3;
         read_buffer<=32'h55555555; //should fix 0 print error
         tx_data<=0;
         tx_valid<=0;
     end else begin
-        if(eth_state==U_TX & tx_ready & ~tx_valid) begin // TODO: add some sort of error detection for write/read
+        if(tx_ready & ~tx_valid) begin // TODO: add some sort of error detection for write/read
+            //eth_state==U_TX & 
             tx_valid<=1;
             // if(circle_buffer[read_pointer]) begin
             // BINARY
@@ -508,7 +515,7 @@ always_ff @(posedge uartclk) begin : UART_Transmit // run "make usb"
                 uart_addr<=uart_addr+1;
             end
             if(&uartbitcounter) begin
-                read_buffer<=rd_data1;
+                read_buffer<=start_address;
             end else begin
                 read_buffer[27:0]<=read_buffer[31:4];
             end
@@ -616,28 +623,40 @@ always_comb begin : LED_drivers
 
             // 3 - Pink for posreset
             led3_b = err3;
-            led3_g = ~trigger_reset;
+            led3_g = 0;
             led3_r = err3;
         end else begin
-            // 0 - White on reset
-            led0_b = rst;
-            led0_g = rst;
-            led0_r = rst;
+            // // 0 - White on reset
+            // led0_b = rst;
+            // led0_g = rst;
+            // led0_r = rst;
 
-            // 1 - Red on error state
-            led1_b = eth_state==E_ERR;
-            led1_g = eth_state==E_ERR;
-            led1_r = eth_state==E_ERR;
+            // // 1 - Red on error state
+            // led1_b = eth_state==E_ERR;
+            // led1_g = eth_state==E_ERR;
+            // led1_r = eth_state==E_ERR;
 
-            // 2 - Blue on RX clock
-            led2_b = eth_rx_clk;
-            led2_g = 0;
-            led2_r = 0;
+            // // 2 - Blue on RX clock
+            // led2_b = eth_rx_clk;
+            // led2_g = 0;
+            // led2_r = 0;
 
-            // 3 - Cyan on TX clock
-            led3_b = eth_tx_clk;
-            led3_g = eth_tx_clk;
-            led3_r = 0;
+            // // 3 - Cyan on TX clock
+            // led3_b = eth_tx_clk;
+            // led3_g = eth_tx_clk;
+            // led3_r = 0;
+            led0_b = pb_endaddr==9'd295;
+            led1_b = pb_endaddr==9'd296;
+            led2_b = pb_endaddr==9'd297;
+            led3_b = pb_endaddr==9'd298;
+            led0_g = pb_endaddr==9'd299;
+            led1_g = pb_endaddr==9'd300;
+            led2_g = pb_endaddr==9'd301;
+            led3_g = pb_endaddr==9'd302;
+            led0_r = pb_endaddr==9'd303;
+            led1_r = pb_endaddr==9'd304;
+            led2_r = pb_endaddr==9'd305;
+            led3_r = pb_endaddr==9'd306;
         end
     end else begin
         led0_b = 0;
