@@ -147,6 +147,9 @@ make program_fpga_vivado
 
 # for digilent use
 make program_fpga_digilent
+
+# for usb UART reading
+make usb
 ```
 
 ## Setting up the hardware
@@ -233,6 +236,10 @@ The following switch/button bindings were used (these are the final ones, more i
 - SW3 (FALSE → use SW2 LED config; TRUE → use primary LED config)
 - BTN3-1 (FALSE → nothing; TRUE → system reset)
 - BTN0 (FALSE → nothing; TRUE → FSM one-shot override/trigger)
+
+## Known Issues
+
+The audio has some glitches which likely come from a rate issue from not enough buffering. We have checked and believe that all modules should be writing and reading the correct amounts; therefore the data should be correct.
 
 # Team
 
