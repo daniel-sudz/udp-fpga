@@ -60,6 +60,12 @@ The UDP protocol is the simplest method of sending and recieving raw data packet
 
 The software allows chunking a 44.1Khz `.wav` and streams it over UDP ethernet packets to be parsed by the FPGA. The software documentation can be found at https://github.com/daniel-sudz/udp-fpga/tree/main/software.
 
+<p align="center">
+   <img src="./docs/wireshark.jpg" width="750"/>
+ </p>
+
+To make sure that we are sending valid UDP packets we tried sending audio over the loopback `lo` interface and making sure that wireshark correctly interprets all of the fields that we set in the packet. 
+
 # Networking Link Layer Linux Resources
 
 - [ ] Calculate IP Checksum: https://gist.github.com/david-hoze/0c7021434796997a4ca42d7731a7073a
