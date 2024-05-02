@@ -135,6 +135,21 @@ cd udp-fpga
 
 From here you can program the FPGA with our main module that incorporates all of the submodules.
 
+## Setting up the hardware
+
+To fully interact with the final system, you will need the following:
+- Ethernet cable
+- Output device that works via 3.5mm aux (Speaker+cable, Headphones)
+- Laptop with software setup (see software setup section)
+- Arty A7 board
+- Digilent I2S2 module
+
+Plug the I2S2 into the Arty board as shown below, ensuring that the device is in Slave mode and the aux cable (output device) is connected to the green jack on the board. Plug the ethernet cable into the FPGA and the host laptop. The rest of the layout is also shown.
+
+<p align="center">
+   <img src="./docs/full_system.jpg" width="800"/>
+  </p>
+
 # Repository breakdown
 
 ## /hdl
