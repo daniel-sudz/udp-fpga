@@ -51,6 +51,9 @@ The IPV4 protocol extends the global delivery mechanism of point-to-point ethern
 
 The UDP protocol is the simplest method of sending and recieving raw data packets within an IPV4 frame. The protocol is "one-shot" in that it provides no redudency for packets that have failed to deliver. The UDP protocol is commonly used in streaming application where only the latest packet is of importance to the user. The UDP protocol provides segmentation of data streams with the source and destination port fields enabling up to 65536 unique concurrent data streams between any two given IP addresses. 
 
+# Software
+
+The software allows chunking a 44.1Khz `.wav` and streams it over UDP ethernet packets to be parsed by the FPGA. The software documentation can be found at https://github.com/daniel-sudz/udp-fpga/tree/main/software.
 
 # Networking Link Layer Linux Resources
 
