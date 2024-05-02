@@ -163,3 +163,56 @@ Generates a pulse lasting for a length defined by a given parameter.
 
 ### uart_driver.sv
 Standard UART protocol implemented for debugging (sending packets to terminal).
+
+# Process Documentation
+Original Proposal: [proposal](/docs/original_proposal.pdf)
+
+## MVP
+
+The last MVP we decided on was a working Ethernet UDP to audio device. We also agreed upon the use of RAMs as buffers between system elements.
+
+## Design
+
+Getting the interface with the Ethernet PHY chip working and outputting the result to RAM and then from RAM to UART was the first step in the process. Then, the I2S2 was integrated to read from the RAM in place of the UART and output the result to audio. By choosing a fixed packet size from the C++ code, we were able to hardcode the start and end read addresses in the RAM and get audio as well as some other random packets. Finally, the UDP parser was implemented stage by stage, ensuring that each set of checks would pass on valid packets until the whole packet was parsed. Packet length was parameterized and printed over UART to ensure proper receipt before being implemented in the I2S2 module. This process of steady integration allowed for constant checking to ensure that off-by-one errors were caught early and fixed. In the place of simulation, thorough logical analysis and state-tracing was used and then validated with LED and UART debugging.
+
+## Integration
+
+As stated in a prior section, the integration plan went PHY → RAM → UART → I2S2 → PARSER, where each new element was integrated piece by piece to ensure functionality. For example, initially, the parser was integrated as solely a loopback in that it read from the first RAM and wrote to the SECOND. Then the preamble detection was implemented and if that passed, it would jump to loopback again. This was repeated for Ethertype detection, options checking, UDP check, and length parsing.
+
+## Minimal Hardware Testing
+
+Due to the nature of this project, it is not reasonable to simulate the full system without hardware. With minimal hardware (an ethernet cable) a system test can be run by binding LEDs to specific states of the system. These can be states of the FSM, specific bits in counters, or flags set by the modules. Buffers are implemented for signals too infrequent to directly link to LEDs. Ethernet connection can be validated via the LEDs on the port. Additionally, UART can be implemented to print out to USB system diagnostics. Buttons and switches can be programmed in combination to trigger certain system modes allowing different LED displays, skipping states or alternate states, and loopback functionality.
+
+In testing this system, the following signals were displayed on LEDs:
+- pb_end_addr (the end address for writing/reading from the second RAM)
+- eth_state (state of the main system FSM for reading Ethernet frames)
+- eth_crs (medium active)
+- eth_rxerr (receive error)
+- eth_rx_dv (receive data valid)
+- valid_ip (valid IP has been parsed)
+- valid_udp (valid UDP has been parsed)
+- trigger_reset (I2S2 has been triggered)
+
+The following values were printed over UART:
+- Contents of RAM (raw Ethernet packets)
+- pb_end_addr (the end address for writing/reading from the second RAM)
+
+The following switch/button bindings were used (these are the final ones, more intermediate ones were used):
+- SW0 (FALSE → set UDP packet length to 300 bytes; TRUE → use parsed length)
+- SW1 (FALSE → stop writing from Ethernet, play content of first RAM buffer; TRUE → run system normally and play from second, parsed RAM buffer)
+- SW2 (FALSE → use default LED config; TRUE → use secondary LED config)
+- SW3 (FALSE → use SW2 LED config; TRUE → use primary LED config)
+- BTN3-1 (FALSE → nothing; TRUE → system reset)
+- BTN0 (FALSE → nothing; TRUE → FSM one-shot override/trigger)
+
+# Team
+
+## Contributions
+
+- Daniel: Made the C++ code for implementing the Ethernet/UDP spec for broadcasting audio at various rates. Supported system testing by providing streamed audio.
+- Sid: Made the UDP parser implementation. Supported system testing of parser integration.
+- Ari: Made PHY interface, I2S2 interface, UART interface, LED interface, and button/switch interface. Supported integration testing of elements.
+
+## Reflection
+
+If we had more time to do this project, it would be useful to implement comprehensive simulation tests of all modules. This was not feasible within the timescale of this project and with all the complexity in module handshaking, so incremental integration was used.
