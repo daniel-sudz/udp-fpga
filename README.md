@@ -133,7 +133,15 @@ Change into our repository if you haven't already.
 cd udp-fpga
 ```
 
-From here you can program the FPGA with our main module that incorporates all of the submodules.
+From here you can program the FPGA with our main module that incorporates all of the submodules. You can do this using either Vivado or Diginent
+
+```bash
+# for vivado use
+make program_fpga_vivado
+
+# for digilent use
+make program_fpga_digilent
+```
 
 ## Setting up the hardware
 
