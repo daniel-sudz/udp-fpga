@@ -252,3 +252,6 @@ The audio has some glitches which likely come from a rate issue from not enough 
 ## Reflection
 
 If we had more time to do this project, it would be useful to implement comprehensive simulation tests of all modules. This was not feasible within the timescale of this project and with all the complexity in module handshaking, so incremental integration was used.
+
+Sid's personal reflection:
+I initially started with a parallel style system, reading in the full 1500 bytes at once and manually splitting the input into different sections using state machines and specific cases based on whether the packet needed to be dropped or not. This was barely synthesizable in practice and resulted in space constraints. I ended up rewriting the system to read 32-bit words from RAM, with the module being clocked on every word. After consulting with our advisor and the team we realized that this would make debugging with existing states far easier, and would save space in terms of IO ports, time and area. Implementing this approach and using buffers was relatively smooth prior to integration however it made testing slightly more strenuous. In the future, I would want to interface more with software from other components to build and parse packets independent from the PHY chip.
